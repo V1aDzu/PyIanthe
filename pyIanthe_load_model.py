@@ -1,26 +1,30 @@
 import os
-import sys
+from huggingface_hub import snapshot_download
 import pyIanthe_config
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import torch
 
-modules_path = os.path.join(os.path.dirname(__file__), 'modules')
-if modules_path not in sys.path:
-    sys.path.append(modules_path)
-
+# Визначаємо директорію моделі
 author, model_name = pyIanthe_config.MODEL_ID.split("/")
+model_dir = os.path.join(pyIanthe_config.FOLDER_MODELS, author, model_name)
 
-os.makedirs(pyIanthe_config.FOLDER_MODELS, exist_ok=True)
-os.makedirs(f"{pyIanthe_config.FOLDER_MODELS}\{author}" , exist_ok=True)
+# Створюємо папку, якщо її немає
+os.makedirs(model_dir, exist_ok=True)
 
-models_path_w_name = f"{pyIanthe_config.FOLDER_MODELS}\{author}\{model_name}"
-
-if not os.path.exists(model_path_w_name):
-    # Автозавантаження до папки
-    model = AutoModelForCausalLM.from_pretrained(MODEL_ID, cache_dir=model_path_w_name)
-    tokenizer = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=model_path_w_name)
+# Перевіряємо, чи вже існує config.json — якщо так, модель вже завантажена
+if not os.path.exists(os.path.join(model_dir, "config.json")):
+    print("Завантажуємо модель на диск...")
+    snapshot_download(
+        repo_id=pyIanthe_config.MODEL_ID,
+        cache_dir=model_dir,  # використовується для кешування
+        local_dir=model_dir
+    )
+    print("Завантаження завершено.")
 else:
-    model = AutoModelForCausalLM.from_pretrained(model_path_w_name)
-    tokenizer = AutoTokenizer.from_pretrained(model_path_w_name)
+    print("Модель вже є на диску:", model_dir)
 
-print("Модель була збережена у:", model_path_w_name)
+# Тепер можна завантажувати модель у пам'ять за потреби
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+model = AutoModelForCausalLM.from_pretrained(model_dir, device_map="auto")
+tokenizer = AutoTokenizer.from_pretrained(model_dir)
+
+print("Модель готова до використання.")

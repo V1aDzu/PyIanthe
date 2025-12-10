@@ -12,6 +12,6 @@ FOLDER_MODELS = os.path.join(BASE_DIR, "models")
 #FOLDER_TRAINING_STATE = "checkpoints/current_state.json"
 
 # --- ФАЙЛИ МОДЕЛІ ---
-MODEL_ID = "Qwen/Qwen1.5-0.5B"
+MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 #SAVE_MODEL_FILENAME = 'yoktaai_llm'
 #TOKENIZER_FILENAME = 'bpe_tokenizer.json'
