@@ -1,5 +1,6 @@
-# pyIanthe_train_final.py
+# pyIanthe_train_final.py (CORRECT LOGIC)
 import os
+import sys
 import json
 import torch
 import shutil
@@ -27,7 +28,7 @@ if __name__ == "__main__":
     else:
         print("[INFO] Тренування буде на CPU")
 
-    # 1. Папки для чекпоінтів та основної моделі
+    # 1. Папки
     CHECKPOINT_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_CHECKPOINTS)
     MAIN_MODEL_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_MODEL)
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
@@ -41,16 +42,18 @@ if __name__ == "__main__":
         if not dirs:
             return None
         try:
-            dirs_sorted = sorted(dirs, key=lambda x: int(x.split("-")[-1]))
+            # Шукаємо checkpoint-1, checkpoint-2 тощо
+            checkpoint_dirs = [d for d in dirs if d.startswith("checkpoint-")]
+            if checkpoint_dirs:
+                dirs_sorted = sorted(checkpoint_dirs, key=lambda x: int(x.split("-")[-1]))
+                return os.path.join(CHECKPOINT_DIR, dirs_sorted[-1])
         except:
-            dirs_sorted = sorted(dirs)
+            pass
+        # Якщо не знайшли checkpoint-X, беремо останній за алфавітом
+        dirs_sorted = sorted(dirs)
         return os.path.join(CHECKPOINT_DIR, dirs_sorted[-1])
 
     last_checkpoint = get_last_checkpoint()
-    if last_checkpoint:
-        print(f"[INFO] Знайдено останній чекпоінт: {last_checkpoint}, навчання продовжиться.")
-    else:
-        print("[INFO] Чекпоінтів немає, стартуємо навчання з нуля.")
 
     # 2. Конфігурація навчання
     EPOCHS = pyIanthe_config.EPOCHS
@@ -69,15 +72,16 @@ if __name__ == "__main__":
     REPORTS_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_REPORTS)
     os.makedirs(REPORTS_DIR, exist_ok=True)
 
-    # 3. Завантаження датасету та токенізатора
+    # 3. Завантаження датасету та токенізатора (з базової моделі в models/)
     train_dataset_path = os.path.join(pyIanthe_config.FOLDER_TRAIN_DATASET, pyIanthe_config.TRAIN_DATASET_FILENAME)
     dataset = load_from_disk(train_dataset_path)
     print(f"[INFO] Датасет завантажено, записів: {len(dataset)}")
 
+    # ТОКЕНІЗАТОР БЕРЕТЬСЯ З БАЗОВОЇ МОДЕЛІ (models/Qwen/...)
     tokenizer_source_dir = os.path.join(pyIanthe_config.FOLDER_MODELS, *pyIanthe_config.MODEL_ID.split("/"))
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_source_dir, local_files_only=True)
     tokenizer.model_max_length = CONTEXT_LENGTH
-    print("[INFO] Токенізатор завантажено")
+    print(f"[INFO] Токенізатор завантажено з: {tokenizer_source_dir}")
 
     dataset = dataset.filter(lambda x: isinstance(x.get("text", ""), str) and x["text"].strip())
     print(f"[INFO] Після фільтрації: {len(dataset)} записів")
@@ -88,25 +92,86 @@ if __name__ == "__main__":
     tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
-    # 4. Модель
+    # 4. ЛОГІКА ЗАВАНТАЖЕННЯ МОДЕЛІ:
+    # Пріоритет: checkpoint/ → model/ → нова модель
     vocab_size = len(tokenizer)
-    config = GPT2Config(
-        vocab_size=vocab_size,
-        n_positions=CONTEXT_LENGTH,
-        n_ctx=CONTEXT_LENGTH,
-        n_embd=pyIanthe_config.EMBEDDING_DIM,
-        n_layer=pyIanthe_config.NUM_LAYERS,
-        n_head=pyIanthe_config.HEADS,
-        use_cache=False,
-        pad_token_id=tokenizer.eos_token_id,
-    )
-    model = AutoModelForCausalLM.from_config(config).to(device)
+    
+    # Перевіряємо наявність файлів моделі
+    checkpoint_has_model = last_checkpoint and os.path.exists(os.path.join(last_checkpoint, "model.safetensors"))
+    main_model_exists = os.path.exists(os.path.join(MAIN_MODEL_DIR, "model.safetensors"))
+    
+    if checkpoint_has_model:
+        # 1. Є чекпоінт → завантажуємо з нього
+        print(f"[INFO] Знайдено чекпоінт з моделлю: {last_checkpoint}")
+        print(f"[INFO] Завантажуємо модель з чекпоінта (навчання продовжиться)")
+        # ВИПРАВЛЕННЯ: додаємо ignore_mismatched_sizes для tie_word_embeddings
+        model = AutoModelForCausalLM.from_pretrained(
+            last_checkpoint, 
+            ignore_mismatched_sizes=False,
+            local_files_only=True
+        ).to(device)
+        
+        # Перевіряємо чи lm_head має правильні ваги (через tie_word_embeddings)
+        if hasattr(model, 'tie_weights'):
+            model.tie_weights()
+            print("[INFO] ✓ Прив'язані ваги lm_head оновлено")
+        
+        resume_from = last_checkpoint
+        
+    elif main_model_exists:
+        # 2. Немає чекпоінта, але є model/ → завантажуємо звідти
+        print(f"[INFO] Чекпоінта немає, але знайдено модель у: {MAIN_MODEL_DIR}")
+        print(f"[INFO] Завантажуємо модель (optimizer почнеться з нуля)")
+        model = AutoModelForCausalLM.from_pretrained(
+            MAIN_MODEL_DIR,
+            ignore_mismatched_sizes=False,
+            local_files_only=True
+        ).to(device)
+        
+        if hasattr(model, 'tie_weights'):
+            model.tie_weights()
+            print("[INFO] ✓ Прив'язані ваги lm_head оновлено")
+        
+        resume_from = None  # Optimizer/scheduler не відновлюються
+        
+    else:
+        # 3. Нічого немає → створюємо нову модель
+        print("[INFO] Не знайдено ні чекпоінта, ні моделі")
+        print("[INFO] Створюємо нову модель з конфігурації GPT2")
+        config = GPT2Config(
+            vocab_size=vocab_size,
+            n_positions=CONTEXT_LENGTH,
+            n_ctx=CONTEXT_LENGTH,
+            n_embd=pyIanthe_config.EMBEDDING_DIM,
+            n_layer=pyIanthe_config.NUM_LAYERS,
+            n_head=pyIanthe_config.HEADS,
+            use_cache=False,
+            pad_token_id=tokenizer.eos_token_id,
+            tie_word_embeddings=True,
+            # Виправлення попередження про loss_type
+            loss_type=None,  # Використовувати ForCausalLMLoss (default)
+        )
+        model = AutoModelForCausalLM.from_config(config).to(device)
+        resume_from = None
+
+    print(f"[INFO] Модель завантажена, параметрів: {model.num_parameters():,}")
+    
+    # Перевіряємо чи lm_head прив'язаний до embeddings
+    if hasattr(model, 'lm_head') and hasattr(model, 'transformer'):
+        if hasattr(model.transformer, 'wte'):
+            lm_head_ptr = model.lm_head.weight.data_ptr()
+            wte_ptr = model.transformer.wte.weight.data_ptr()
+            if lm_head_ptr == wte_ptr:
+                print("[INFO] ✓ lm_head.weight правильно прив'язаний до wte (tie_word_embeddings працює)")
+            else:
+                print("[WARN] ⚠ lm_head.weight НЕ прив'язаний до wte (можлива проблема)")
+
 
     # 5. TrainingArguments
     training_args = TrainingArguments(
         output_dir=CHECKPOINT_DIR,
         overwrite_output_dir=False,
-        num_train_epochs=1,
+        num_train_epochs=1,  # Тренуємо по 1 епосі за раз
         per_device_train_batch_size=PER_DEVICE_BATCH_SIZE,
         save_steps=SAVE_STEPS,
         save_total_limit=pyIanthe_config.SAVE_LIMIT,
@@ -174,35 +239,93 @@ if __name__ == "__main__":
         print(f"[INFO] Звіт по епосі {epoch_index+1} збережено: {report_file}")
 
     # 7. Тренування
-    print(f"[INFO] Старт тренування.")
+    print(f"\n[INFO] Старт тренування на {EPOCHS} епох(и)")
 
     for epoch in range(EPOCHS):
-        print(f"\n===== Епоха {epoch+1} / {EPOCHS} =====")
+        print(f"\n{'='*60}")
+        print(f"===== Епоха {epoch+1} / {EPOCHS} =====")
+        print(f"{'='*60}")
 
-        # Якщо є останній чекпоінт, продовжуємо навчання
-        resume_checkpoint = last_checkpoint if epoch == 0 else None
-        trainer.train(resume_from_checkpoint=resume_checkpoint)
+        try:
+            # Тренуємо 1 епоху
+            # resume_from використовується тільки для ПЕРШОЇ епохи якщо був чекпоінт
+            if epoch == 0 and resume_from:
+                print(f"[INFO] Продовжуємо з чекпоінта: {resume_from}")
+                trainer.train(resume_from_checkpoint=resume_from)
+            else:
+                trainer.train()
 
-        # Збереження основної моделі та токенізатора
+        except KeyboardInterrupt:
+            print(f"\n[WARN] ⚠ Тренування перервано користувачем (Ctrl+C)")
+            print(f"[INFO] Зберігаємо поточний стан...")
+            
+            # Зберігаємо головну модель
+            model.save_pretrained(MAIN_MODEL_DIR)
+            tokenizer.save_pretrained(MAIN_MODEL_DIR)
+            print(f"[INFO] ✓ Модель збережена у: {MAIN_MODEL_DIR}")
+            
+            # Зберігаємо аварійний чекпоінт
+            emergency_checkpoint = os.path.join(CHECKPOINT_DIR, f"checkpoint-interrupted-epoch{epoch+1}")
+            os.makedirs(emergency_checkpoint, exist_ok=True)
+            trainer.save_model(emergency_checkpoint)
+            trainer.save_state()
+            
+            for fname in ["trainer_state.json", "optimizer.pt", "scheduler.pt", "rng_state.pth", "scaler.pt"]:
+                src = os.path.join(CHECKPOINT_DIR, fname)
+                dst = os.path.join(emergency_checkpoint, fname)
+                if os.path.exists(src):
+                    shutil.copy2(src, dst)
+            
+            print(f"[INFO] ✓ Аварійний чекпоінт: {emergency_checkpoint}")
+            print(f"[INFO] Для продовження запустіть скрипт знову")
+            print("="*60)
+            sys.exit(0)
+
+        # Після кожної епохи зберігаємо:
+        
+        # 1) Головну модель у model/ (для використання/продовження без чекпоінта)
+        print(f"[INFO] Зберігаємо головну модель у: {MAIN_MODEL_DIR}")
+        
+        # Переконуємось що config має правильний tie_word_embeddings
+        if hasattr(model.config, 'tie_word_embeddings'):
+            model.config.tie_word_embeddings = True
+        
         model.save_pretrained(MAIN_MODEL_DIR)
         tokenizer.save_pretrained(MAIN_MODEL_DIR)
-
-        # Збереження стану тренера у чекпоінт
-        checkpoint_epoch_dir = os.path.join(CHECKPOINT_DIR, f"epoch-{epoch+1}")
+        
+        # 2) Чекпоінт у checkpoints/checkpoint-X/ (для точного відновлення)
+        checkpoint_epoch_dir = os.path.join(CHECKPOINT_DIR, f"checkpoint-{epoch+1}")
+        print(f"[INFO] Зберігаємо чекпоінт у: {checkpoint_epoch_dir}")
         os.makedirs(checkpoint_epoch_dir, exist_ok=True)
-        try:
-            trainer.save_state()
-            for fname in ["trainer_state.json", "optimizer.pt", "scheduler.pt", "rng_state.pth"]:
-                src = os.path.join(CHECKPOINT_DIR, fname)
-                dst = os.path.join(checkpoint_epoch_dir, fname)
-                if os.path.exists(src):
-                    if os.path.exists(dst):
-                        os.remove(dst)
-                    shutil.move(src, dst)
-        except Exception as e:
-            print(f"[WARN] Не вдалося викликати trainer.save_state(): {e}")
+        
+        # Переконуємось що config має правильний tie_word_embeddings
+        if hasattr(model.config, 'tie_word_embeddings'):
+            model.config.tie_word_embeddings = True
+        
+        # Зберігаємо модель + config
+        trainer.save_model(checkpoint_epoch_dir)
+        
+        # Зберігаємо стан trainer (optimizer, scheduler, rng)
+        trainer.save_state()
+        
+        # Копіюємо файли стану у checkpoint
+        for fname in ["trainer_state.json", "optimizer.pt", "scheduler.pt", "rng_state.pth", "scaler.pt"]:
+            src = os.path.join(CHECKPOINT_DIR, fname)
+            dst = os.path.join(checkpoint_epoch_dir, fname)
+            if os.path.exists(src):
+                shutil.copy2(src, dst)
+                print(f"  ✓ Скопійовано {fname}")
 
+        # Генеруємо звіт
         generate_report(epoch)
-        print(f"[INFO] Епоха {epoch+1} збережена. Модель у: {MAIN_MODEL_DIR}, чекпоінт у: {checkpoint_epoch_dir}")
+        
+        print(f"\n[SUCCESS] Епоха {epoch+1} завершена і збережена")
+        print(f"  → Модель: {MAIN_MODEL_DIR}")
+        print(f"  → Чекпоінт: {checkpoint_epoch_dir}")
 
-    print("[INFO] Тренування завершено. Усі звіти та чекпоінти збережено.")
+    print("\n" + "="*60)
+    print("[SUCCESS] Тренування завершено!")
+    print(f"Всього епох: {EPOCHS}")
+    print(f"Фінальна модель: {MAIN_MODEL_DIR}")
+    print(f"Звіти: {REPORTS_DIR}")
+    print("="*60)
