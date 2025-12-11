@@ -1,7 +1,9 @@
 # pyIanthe.py
 import os
+
 # --- НАЛАШТУВАННЯ DEBUG ---
 DEBUG = False               # True = показувати всі warnings, False = приховати
+MONITOR_INTERVAL = 2
 
 # --- КАТАЛОГИ ---
 BASE_DIR = os.path.dirname(__file__)
