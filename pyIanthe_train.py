@@ -1,6 +1,7 @@
 # pyIanthe_train.py
 import os
 import json
+import shutil
 import torch
 from transformers import (
     AutoTokenizer,
@@ -13,9 +14,9 @@ from transformers import (
 from datasets import load_from_disk
 import pyIanthe_config
 
-# -------------------------------
+# ============================================================
 # 0. Перевірка GPU та налаштування
-# -------------------------------
+# ============================================================
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 if device == "cuda":
@@ -29,11 +30,77 @@ else:
 
 num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
 print(f"[INFO] Кількість доступних GPU: {num_gpus}")
-input("[INFO] Натисніть Enter, щоб продовжити тренування або Ctrl+C, щоб зупинити скрипт...")
 
-# -------------------------------
+# ------------------------------------------------------------
+# Меню керування чекпоінтами: продовжити / почати заново / видалити / вийти
+# ------------------------------------------------------------
+CHECKPOINT_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_CHECKPOINTS)
+os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+
+def list_checkpoint_dirs():
+    """Повертає відсортований список підпапок у CHECKPOINT_DIR."""
+    if not os.path.isdir(CHECKPOINT_DIR):
+        return []
+    items = [d for d in os.listdir(CHECKPOINT_DIR) if os.path.isdir(os.path.join(CHECKPOINT_DIR, d))]
+    # сортуємо природньо: якщо імена як checkpoint-1, checkpoint-2 ...
+    def keyfn(x):
+        parts = x.split("-")
+        try:
+            return int(parts[-1])
+        except:
+            return x
+    return sorted(items, key=keyfn)
+
+def get_last_checkpoint():
+    lst = list_checkpoint_dirs()
+    if not lst:
+        return None
+    return os.path.join(CHECKPOINT_DIR, lst[-1])
+
+def show_menu_and_get_choice(last_ckpt_name):
+    print("\n=== Меню керування чекпоінтами ===")
+    print(f"Знайдено останній чекпоінт: {last_ckpt_name}")
+    print("1) Продовжити тренування з останнього чекпоінта")
+    print("2) Почати тренування заново (видалити старі чекпоінти)")
+    print("3) Видалити всі чекпоінти і вийти")
+    print("4) Вийти, нічого не змінюючи")
+    return input("Оберіть дію (1-4): ").strip()
+
+def prepare_checkpoints_menu():
+    """Повертає path до чекпоінта для resume або None; або exit(0) при виборі виходу."""
+    last = get_last_checkpoint()
+    if last is None:
+        print("[INFO] Чекпоінтів не знайдено — буде створено нове тренування.")
+        return None
+
+    while True:
+        choice = show_menu_and_get_choice(last)
+        if choice == "1":
+            print(f"[INFO] Продовжуємо з чекпоінта: {last}")
+            return last
+        if choice == "2":
+            print("[INFO] Видаляємо старі чекпоінти та починаємо заново...")
+            # безпечне видалення: видаляємо каталог повністю і створюємо порожній
+            shutil.rmtree(CHECKPOINT_DIR)
+            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+            return None
+        if choice == "3":
+            print("[INFO] Видаляємо всі чекпоінти і виходимо.")
+            shutil.rmtree(CHECKPOINT_DIR)
+            os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+            exit(0)
+        if choice == "4":
+            print("[INFO] Вихід без змін.")
+            exit(0)
+        print("[WARN] Невірний вибір. Спробуйте ще раз.")
+
+# Задаємо resume_checkpoint згідно меню
+resume_checkpoint = prepare_checkpoints_menu()
+input("[INFO] Натисніть Enter, щоб продовжити або Ctrl+C щоб відмінити...")
+
+# ============================================================
 # 1. Конфігурація навчання та директорії
-# -------------------------------
+# ============================================================
 EPOCHS = pyIanthe_config.EPOCHS
 LEARNING_RATE = pyIanthe_config.LEARNING_RATE
 PER_DEVICE_BATCH_SIZE = pyIanthe_config.PER_DEVICE_BATCH_SIZE
@@ -49,12 +116,11 @@ TRAINING_CONFIG = {
 
 REPORTS_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_REPORTS)
 os.makedirs(REPORTS_DIR, exist_ok=True)
-CHECKPOINT_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_CHECKPOINTS)
-os.makedirs(CHECKPOINT_DIR, exist_ok=True)
+# CHECKPOINT_DIR вже створений раніше
 
-# -------------------------------
+# ============================================================
 # 2. Завантаження датасету та токенізатора
-# -------------------------------
+# ============================================================
 train_dataset_path = os.path.join(pyIanthe_config.FOLDER_TRAIN_DATASET, pyIanthe_config.TRAIN_DATASET_FILENAME)
 dataset = load_from_disk(train_dataset_path)
 print(f"[INFO] Завантажено датасет з {len(dataset)} записами")
@@ -104,9 +170,9 @@ def tokenize_function(examples):
 tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
 data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
-# -------------------------------
+# ============================================================
 # 3. Створення моделі з нуля
-# -------------------------------
+# ============================================================
 vocab_size = len(tokenizer)
 print(f"[INFO] Використовуємо vocab_size={vocab_size} для моделі")
 
@@ -121,13 +187,13 @@ config = GPT2Config(
 
 model = AutoModelForCausalLM.from_config(config).to(device)
 
-# -------------------------------
+# ============================================================
 # 4. Налаштування тренування
-# -------------------------------
+# ============================================================
 training_args = TrainingArguments(
     output_dir=CHECKPOINT_DIR,
-    overwrite_output_dir=True,
-    num_train_epochs=EPOCHS,
+    overwrite_output_dir=False,  # не перезаписуємо існуючі чекпоінти
+    num_train_epochs=1,  # ми будемо викликати trainer.train по-епохно, тому тут 1
     per_device_train_batch_size=PER_DEVICE_BATCH_SIZE,
     save_steps=SAVE_STEPS,
     save_total_limit=pyIanthe_config.SAVE_LIMIT,
@@ -146,9 +212,9 @@ trainer = Trainer(
     data_collator=data_collator
 )
 
-# -------------------------------
+# ============================================================
 # 5. Генерація звітів і метрики
-# -------------------------------
+# ============================================================
 GENERATE_EXAMPLES = [
     "Hello, how are you?",
     "Once upon a time,",
@@ -170,7 +236,7 @@ def compute_metrics(text):
     perc_meaningful = meaningful_tokens / total_tokens * 100 if total_tokens > 0 else 0
     return avg_length, perc_meaningful
 
-def generate_report(epoch: int):
+def generate_report(epoch_index: int):
     model.eval()
     report = {}
     for prompt in GENERATE_EXAMPLES:
@@ -198,18 +264,59 @@ def generate_report(epoch: int):
             "perc_meaningful_tokens": perc_meaningful
         }
 
-    report_file = os.path.join(REPORTS_DIR, f"report_epoch_{epoch+1}.json")
+    report_file = os.path.join(REPORTS_DIR, f"report_epoch_{epoch_index+1}.json")
     with open(report_file, "w", encoding="utf-8") as f:
         json.dump(report, f, ensure_ascii=False, indent=2)
-    print(f"[INFO] Звіт по епосі {epoch+1} збережено: {report_file}")
+    print(f"[INFO] Звіт по епосі {epoch_index+1} збережено: {report_file}")
 
-# -------------------------------
-# 6. Тренування з генерацією звітів
-# -------------------------------
+# ============================================================
+# 6. Запуск тренування по епохам з правильним resume
+# ============================================================
+print(f"[INFO] Старт тренування. resume_from_checkpoint = {resume_checkpoint}")
+
+# Якщо resume_checkpoint задано — використаємо його в першому виклику trainer.train,
+# далі викликаємо trainer.train() без аргументу (тренер продовжить із поточного стану).
+first_resume = resume_checkpoint
+
 for epoch in range(EPOCHS):
-    print(f"===== Епоха {epoch+1} =====")
-    trainer.train(resume_from_checkpoint=None)
+    print(f"===== Епоха {epoch+1} / {EPOCHS} =====")
+    # Перший виклик може використовувати resume_checkpoint; далі — None
+    trainer.train(resume_from_checkpoint=first_resume)
+    # Після першого проходу скидаємо resume — більше не потрібен
+    first_resume = None
+
+    # --- Зберігаємо модель у окремій теці epoch-{n}
+    epoch_dir_name = f"epoch-{epoch+1}"
+    epoch_dir = os.path.join(CHECKPOINT_DIR, epoch_dir_name)
+    os.makedirs(epoch_dir, exist_ok=True)
+
+    # trainer.save_model збереже ваги в epoch_dir
+    trainer.save_model(epoch_dir)
+
+    # trainer.save_state() збережe trainer_state.json, optimizer.pt, scheduler.pt, rng_state.pth у output_dir (CHECKPOINT_DIR)
+    try:
+        trainer.save_state()
+    except Exception as e:
+        # Якщо не вдалося зберегти повністю — логнімо, але спробуємо перемістити що є
+        print(f"[WARN] Не вдалося викликати trainer.save_state(): {e}")
+
+    # Переміщаємо можливі файли стану у папку epoch_dir (щоб чекпоінт був повним)
+    possible_state_files = ["trainer_state.json", "optimizer.pt", "scheduler.pt", "rng_state.pth"]
+    for fname in possible_state_files:
+        src = os.path.join(CHECKPOINT_DIR, fname)
+        dst = os.path.join(epoch_dir, fname)
+        if os.path.exists(src):
+            try:
+                # якщо вже існує у папці, перезаписуємо
+                if os.path.exists(dst):
+                    os.remove(dst)
+                shutil.move(src, dst)
+            except Exception as e:
+                print(f"[WARN] Не вдалося перемістити {src} -> {dst}: {e}")
+
+    # Генеруємо звіт для цієї епохи
     generate_report(epoch)
-    trainer.save_model(os.path.join(CHECKPOINT_DIR, f"epoch-{epoch+1}"))
+
+    print(f"[INFO] Epoch {epoch+1} збережено у: {epoch_dir}")
 
 print("[INFO] Тренування завершено. Всі звіти та чекпоінти збережені.")
