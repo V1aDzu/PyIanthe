@@ -9,7 +9,7 @@ FOLDER_TRAIN_DATASET = "dataset"
 FOLDER_CHECKPOINTS = "checkpoints"
 FOLDER_REPORTS = "reports"
 FOLDER_MODEL = "model"
-FOLDER_TOKENIZER = "tokenizer"
+#FOLDER_TOKENIZER = "tokenizer"
 
 # --- ФАЙЛИ МОДЕЛІ ---
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
