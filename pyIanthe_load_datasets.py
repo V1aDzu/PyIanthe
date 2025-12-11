@@ -110,8 +110,10 @@ for info in dataset_info:
 if all_datasets:
     combined_dataset = concatenate_datasets(all_datasets)
     print(f"\n[INFO] Загальний розмір об’єднаного датасету: {len(combined_dataset)} записів")
-    train_dataset_path = os.path.join(pyIanthe_config.FOLDER_TRAIN_DATASET, pyIanthe_config.TRAIN_DATASET_FILENAME)
+
+    train_dataset_path = pyIanthe_config.FOLDER_TRAIN_DATASET
     combined_dataset.save_to_disk(train_dataset_path)
+
     print(f"[INFO] Об’єднаний датасет збережено: {train_dataset_path}")
 else:
     print("[WARNING] Жоден датасет не було завантажено. Скрипт завершив роботу.")

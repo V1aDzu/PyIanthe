@@ -1,5 +1,7 @@
 # pyIanthe.py
 import os
+# --- НАЛАШТУВАННЯ DEBUG ---
+DEBUG = False               # True = показувати всі warnings, False = приховати
 
 # --- КАТАЛОГИ ---
 BASE_DIR = os.path.dirname(__file__)
@@ -14,7 +16,6 @@ FOLDER_MODEL = "model"
 # --- ФАЙЛИ МОДЕЛІ ---
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 CORPUS_DATA_FILENAME = "datasets.json"
-TRAIN_DATASET_FILENAME = "mini_dataset.txt"
 
 # --- АРХІТЕКТУРА ---
 EMBEDDING_DIM = 1024

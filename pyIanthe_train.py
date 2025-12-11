@@ -4,6 +4,7 @@ import sys
 import json
 import torch
 import shutil
+import warnings
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
@@ -14,6 +15,27 @@ from transformers import (
 )
 from datasets import load_from_disk
 import pyIanthe_config
+
+# ==================== НАЛАШТУВАННЯ WARNINGS ====================
+if not pyIanthe_config.DEBUG:
+    import warnings
+    warnings.filterwarnings("ignore")
+    
+    import logging
+    # Вимкнути ВСІ warnings від transformers
+    logging.getLogger("transformers").setLevel(logging.ERROR)
+    logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
+    logging.getLogger("transformers.configuration_utils").setLevel(logging.ERROR)
+    logging.getLogger("transformers.modeling_tf_utils").setLevel(logging.ERROR)
+    
+    # Встановити глобальну verbosity transformers на мінімум
+    from transformers import logging as transformers_logging
+    transformers_logging.set_verbosity_error()
+    
+    print("[INFO] DEBUG режим вимкнено, warnings приховані")
+else:
+    print("[INFO] DEBUG режим увімкнено, всі warnings показуються")
+# ================================================================
 
 if __name__ == "__main__":
 
@@ -73,7 +95,25 @@ if __name__ == "__main__":
     os.makedirs(REPORTS_DIR, exist_ok=True)
 
     # 3. Завантаження датасету та токенізатора (з базової моделі в models/)
-    train_dataset_path = os.path.join(pyIanthe_config.FOLDER_TRAIN_DATASET, pyIanthe_config.TRAIN_DATASET_FILENAME)
+
+    train_dataset_path = pyIanthe_config.FOLDER_TRAIN_DATASET
+
+    # Перевірка наявності датасету
+    if not os.path.exists(train_dataset_path):
+        print(f"[ERROR] Папка датасету не знайдена: {train_dataset_path}")
+        print(f"[INFO] Спочатку запустіть pyIanthe_load_dataset.py для завантаження датасетів")
+        sys.exit(1)
+
+    # Перевірка чи є arrow файли (datasets зберігає дані в arrow форматі)
+    arrow_files = [f for f in os.listdir(train_dataset_path) if f.endswith('.arrow')]
+    dataset_info = os.path.join(train_dataset_path, 'dataset_info.json')
+
+    if not arrow_files and not os.path.exists(dataset_info):
+        print(f"[ERROR] Папка {train_dataset_path} порожня або не містить датасет")
+        print(f"[INFO] Знайдено файлів: {os.listdir(train_dataset_path) if os.path.exists(train_dataset_path) else 'папка не існує'}")
+        print(f"[INFO] Спочатку запустіть pyIanthe_load_dataset.py для завантаження датасетів")
+        sys.exit(1)
+
     dataset = load_from_disk(train_dataset_path)
     print(f"[INFO] Датасет завантажено, записів: {len(dataset)}")
 
