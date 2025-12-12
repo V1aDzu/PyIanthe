@@ -2,14 +2,15 @@
 import os
 
 # --- НАЛАШТУВАННЯ DEBUG ---
-DEBUG = False               # True = показувати всі warnings, False = приховати
+DEBUG = True               # True = показувати всі warnings, False = приховати
 MONITOR_INTERVAL = 2
 
 # --- КАТАЛОГИ ---
 BASE_DIR = os.path.dirname(__file__)
 FOLDER_MODELS = os.path.join(BASE_DIR, "models")
 FOLDER_CORPUS = "dictionaries"
-FOLDER_TRAIN_DATASET = "dataset"
+FOLDER_TRAIN_DATASET = "dataset/train"
+FOLDER_EVAL_DATASET = "dataset/eval"
 FOLDER_CHECKPOINTS = "checkpoints"
 FOLDER_REPORTS = "reports"
 FOLDER_MODEL = "model"
@@ -17,7 +18,9 @@ FOLDER_MODEL = "model"
 
 # --- ФАЙЛИ МОДЕЛІ ---
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
-CORPUS_DATA_FILENAME = "datasets.json"
+CORPUS_DATA_FILENAME = "config/datasets.json"
+TEXT_TEST_FILENAME = "config/texttest.json"
+TRAINING_LOG_FILENAME = "training.log"
 
 # --- АРХІТЕКТУРА ---
 EMBEDDING_DIM = 1024
@@ -25,7 +28,6 @@ NUM_LAYERS = 12
 HEADS = 16
 
 # --- НАЛАШТУВАННЯ ТРЕНУВАННЯ ---
-
 EPOCHS = 3                  #Епохи для основного етапу
 LEARNING_RATE = 5e-4        # LR для основного етапу
 CONTEXT_LENGTH = 512
@@ -38,3 +40,16 @@ PER_DEVICE_BATCH_SIZE = 2   # зменшити якщо мало VRAM
 NUM_WORKERS = 2             # кількість потоків на CPU
 PIN_MEMORY = True           # прискорення на GPU
 FP16 = True                 # половинна точність на GPU
+
+# --- НАЛАШТУВАННЯ ПОРІВНЯННЯ ---
+EVAL_ENABLED = True
+EVAL_STEPS = 500
+TEXT_TESTS_COUNT = 10
+EVAL_PERCENT = 5
+
+#        Recommended eval sizes 
+#  > 1M зап   1-2%   980K-990K   10K-20K
+# 100K - 1M     5%    95K-950K    5K-50K
+# 10K - 100K   10%      9K-90K    1K-10K
+# 1K - 10K  15-20%    800-8.5K    200-2K
+#  < 1K зап 20-25%        <800   200-250

@@ -1,0 +1,20 @@
+{
+  "Hello, how are you?": {
+    "text": "Hello, how are you? — с, «, предназначен — « 198).—-)-26430 —5— в 20000207а, с с00. Р 20 года",
+    "perplexity": 69703.4609375,
+    "avg_length": 19,
+    "perc_meaningful_tokens": 42.10526315789473
+  },
+  "Once upon a time,": {
+    "text": "Once upon a time, — — от дляный с — —мв, с,ное-т 1им»а для и к, в для и для-ом сом, на —-льт «,ных,, а",
+    "perplexity": 20956.115234375,
+    "avg_length": 25,
+    "perc_meaningful_tokens": 52.0
+  },
+  "The quick brown fox": {
+    "text": "The quick brown fox —н р такженаяат — б  —редли, в.084С, в ССеней184. —2 год, в Б, в 113,.0",
+    "perplexity": 2000186.375,
+    "avg_length": 19,
+    "perc_meaningful_tokens": 52.63157894736842
+  }
+}

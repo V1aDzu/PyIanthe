@@ -1,10 +1,9 @@
-# pyIanthe_train_final.py (CORRECT LOGIC)
+# pyIanthe_train_final.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
 import os
 import sys
 import json
 import torch
 import shutil
-import warnings
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
@@ -22,13 +21,11 @@ if not pyIanthe_config.DEBUG:
     warnings.filterwarnings("ignore")
     
     import logging
-    # Вимкнути ВСІ warnings від transformers
     logging.getLogger("transformers").setLevel(logging.ERROR)
     logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
     logging.getLogger("transformers.configuration_utils").setLevel(logging.ERROR)
     logging.getLogger("transformers.modeling_tf_utils").setLevel(logging.ERROR)
     
-    # Встановити глобальну verbosity transformers на мінімум
     from transformers import logging as transformers_logging
     transformers_logging.set_verbosity_error()
     
@@ -39,7 +36,7 @@ else:
 
 if __name__ == "__main__":
 
-    # 0. Перевірка GPU та налаштування
+    # 0. GPU та налаштування
     device = "cuda" if torch.cuda.is_available() else "cpu"
     fp16 = pyIanthe_config.FP16 if device == "cuda" else False
     pin_memory = pyIanthe_config.PIN_MEMORY if device == "cuda" else False
@@ -53,10 +50,12 @@ if __name__ == "__main__":
     # 1. Папки
     CHECKPOINT_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_CHECKPOINTS)
     MAIN_MODEL_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_MODEL)
+    REPORTS_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_REPORTS)
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     os.makedirs(MAIN_MODEL_DIR, exist_ok=True)
+    os.makedirs(REPORTS_DIR, exist_ok=True)
 
-    # Функція для знаходження останнього чекпоінта
+    # Функція для останнього чекпоінта
     def get_last_checkpoint():
         if not os.path.isdir(CHECKPOINT_DIR):
             return None
@@ -64,14 +63,12 @@ if __name__ == "__main__":
         if not dirs:
             return None
         try:
-            # Шукаємо checkpoint-1, checkpoint-2 тощо
             checkpoint_dirs = [d for d in dirs if d.startswith("checkpoint-")]
             if checkpoint_dirs:
                 dirs_sorted = sorted(checkpoint_dirs, key=lambda x: int(x.split("-")[-1]))
                 return os.path.join(CHECKPOINT_DIR, dirs_sorted[-1])
         except:
             pass
-        # Якщо не знайшли checkpoint-X, беремо останній за алфавітом
         dirs_sorted = sorted(dirs)
         return os.path.join(CHECKPOINT_DIR, dirs_sorted[-1])
 
@@ -91,33 +88,22 @@ if __name__ == "__main__":
         "num_train_epochs": EPOCHS
     }
 
-    REPORTS_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_REPORTS)
-    os.makedirs(REPORTS_DIR, exist_ok=True)
-
-    # 3. Завантаження датасету та токенізатора (з базової моделі в models/)
-
+    # 3. Завантаження датасету
     train_dataset_path = pyIanthe_config.FOLDER_TRAIN_DATASET
-
-    # Перевірка наявності датасету
     if not os.path.exists(train_dataset_path):
         print(f"[ERROR] Папка датасету не знайдена: {train_dataset_path}")
-        print(f"[INFO] Спочатку запустіть pyIanthe_load_dataset.py для завантаження датасетів")
         sys.exit(1)
 
-    # Перевірка чи є arrow файли (datasets зберігає дані в arrow форматі)
     arrow_files = [f for f in os.listdir(train_dataset_path) if f.endswith('.arrow')]
     dataset_info = os.path.join(train_dataset_path, 'dataset_info.json')
-
     if not arrow_files and not os.path.exists(dataset_info):
         print(f"[ERROR] Папка {train_dataset_path} порожня або не містить датасет")
-        print(f"[INFO] Знайдено файлів: {os.listdir(train_dataset_path) if os.path.exists(train_dataset_path) else 'папка не існує'}")
-        print(f"[INFO] Спочатку запустіть pyIanthe_load_dataset.py для завантаження датасетів")
         sys.exit(1)
 
     dataset = load_from_disk(train_dataset_path)
     print(f"[INFO] Датасет завантажено, записів: {len(dataset)}")
 
-    # ТОКЕНІЗАТОР БЕРЕТЬСЯ З БАЗОВОЇ МОДЕЛІ (models/Qwen/...)
+    # 4. Токенізатор
     tokenizer_source_dir = os.path.join(pyIanthe_config.FOLDER_MODELS, *pyIanthe_config.MODEL_ID.split("/"))
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_source_dir, local_files_only=True)
     tokenizer.model_max_length = CONTEXT_LENGTH
@@ -125,57 +111,37 @@ if __name__ == "__main__":
 
     dataset = dataset.filter(lambda x: isinstance(x.get("text", ""), str) and x["text"].strip())
     print(f"[INFO] Після фільтрації: {len(dataset)} записів")
-
-    def tokenize_function(examples):
-        return tokenizer(examples["text"], truncation=True, max_length=CONTEXT_LENGTH)
-
-    tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
+    
+    tokenized_dataset = dataset.map(lambda ex: tokenizer(ex["text"], truncation=True, max_length=CONTEXT_LENGTH),
+                                    batched=True, remove_columns=["text"])
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
-    # 4. ЛОГІКА ЗАВАНТАЖЕННЯ МОДЕЛІ:
-    # Пріоритет: checkpoint/ → model/ → нова модель
+    # 5. Завантаження моделі
     vocab_size = len(tokenizer)
-    
-    # Перевіряємо наявність файлів моделі
     checkpoint_has_model = last_checkpoint and os.path.exists(os.path.join(last_checkpoint, "model.safetensors"))
     main_model_exists = os.path.exists(os.path.join(MAIN_MODEL_DIR, "model.safetensors"))
-    
+
     if checkpoint_has_model:
-        # 1. Є чекпоінт → завантажуємо з нього
         print(f"[INFO] Знайдено чекпоінт з моделлю: {last_checkpoint}")
         print(f"[INFO] Завантажуємо модель з чекпоінта (навчання продовжиться)")
-        # ВИПРАВЛЕННЯ: додаємо ignore_mismatched_sizes для tie_word_embeddings
-        model = AutoModelForCausalLM.from_pretrained(
-            last_checkpoint, 
-            ignore_mismatched_sizes=False,
-            local_files_only=True
-        ).to(device)
-        
-        # Перевіряємо чи lm_head має правильні ваги (через tie_word_embeddings)
+        model = AutoModelForCausalLM.from_pretrained(last_checkpoint, ignore_mismatched_sizes=False,
+                                                     local_files_only=True).to(device)
         if hasattr(model, 'tie_weights'):
             model.tie_weights()
             print("[INFO] ✓ Прив'язані ваги lm_head оновлено")
-        
         resume_from = last_checkpoint
         
     elif main_model_exists:
-        # 2. Немає чекпоінта, але є model/ → завантажуємо звідти
         print(f"[INFO] Чекпоінта немає, але знайдено модель у: {MAIN_MODEL_DIR}")
         print(f"[INFO] Завантажуємо модель (optimizer почнеться з нуля)")
-        model = AutoModelForCausalLM.from_pretrained(
-            MAIN_MODEL_DIR,
-            ignore_mismatched_sizes=False,
-            local_files_only=True
-        ).to(device)
-        
+        model = AutoModelForCausalLM.from_pretrained(MAIN_MODEL_DIR, ignore_mismatched_sizes=False,
+                                                     local_files_only=True).to(device)
         if hasattr(model, 'tie_weights'):
             model.tie_weights()
             print("[INFO] ✓ Прив'язані ваги lm_head оновлено")
-        
-        resume_from = None  # Optimizer/scheduler не відновлюються
+        resume_from = None
         
     else:
-        # 3. Нічого немає → створюємо нову модель
         print("[INFO] Не знайдено ні чекпоінта, ні моделі")
         print("[INFO] Створюємо нову модель з конфігурації GPT2")
         config = GPT2Config(
@@ -188,30 +154,28 @@ if __name__ == "__main__":
             use_cache=False,
             pad_token_id=tokenizer.eos_token_id,
             tie_word_embeddings=True,
-            # Виправлення попередження про loss_type
-            loss_type=None,  # Використовувати ForCausalLMLoss (default)
+            loss_type=None,
         )
         model = AutoModelForCausalLM.from_config(config).to(device)
         resume_from = None
 
     print(f"[INFO] Модель завантажена, параметрів: {model.num_parameters():,}")
     
-    # Перевіряємо чи lm_head прив'язаний до embeddings
+    # Перевірка привязки lm_head до embeddings
     if hasattr(model, 'lm_head') and hasattr(model, 'transformer'):
         if hasattr(model.transformer, 'wte'):
             lm_head_ptr = model.lm_head.weight.data_ptr()
             wte_ptr = model.transformer.wte.weight.data_ptr()
             if lm_head_ptr == wte_ptr:
-                print("[INFO] ✓ lm_head.weight правильно прив'язаний до wte (tie_word_embeddings працює)")
+                print("[INFO] ✓ lm_head.weight правильно прив'язаний до wte")
             else:
-                print("[WARN] ⚠ lm_head.weight НЕ прив'язаний до wte (можлива проблема)")
+                print("[WARN] ⚠ lm_head.weight НЕ прив'язаний до wte")
 
-
-    # 5. TrainingArguments
+    # 6. TrainingArguments і Trainer
     training_args = TrainingArguments(
         output_dir=CHECKPOINT_DIR,
         overwrite_output_dir=False,
-        num_train_epochs=1,  # Тренуємо по 1 епосі за раз
+        num_train_epochs=1,
         per_device_train_batch_size=PER_DEVICE_BATCH_SIZE,
         save_steps=SAVE_STEPS,
         save_total_limit=pyIanthe_config.SAVE_LIMIT,
@@ -232,9 +196,43 @@ if __name__ == "__main__":
         data_collator=data_collator
     )
 
-    # 6. Метрики та звіти
-    GENERATE_EXAMPLES = ["Hello, how are you?", "Once upon a time,", "The quick brown fox"]
+    # 7. Завантаження тестових прикладів з JSON
+    def load_test_examples():
+        """Завантажує тестові приклади з JSON файлу"""
+        test_file = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.TEXT_TEST_FILENAME)
+        
+        if not os.path.exists(test_file):
+            print(f"[WARN] Файл тестових прикладів не знайдено: {test_file}")
+            print(f"[INFO] Використовуються стандартні приклади")
+            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
+        
+        try:
+            with open(test_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                
+            if isinstance(data, list):
+                examples = data[:pyIanthe_config.TEXT_TESTS_COUNT]
+                print(f"[INFO] Завантажено {len(examples)} тестових прикладів з {test_file}")
+                return examples
+                
+            elif isinstance(data, dict) and "examples" in data:
+                examples = data["examples"][:pyIanthe_config.TEXT_TESTS_COUNT]
+                print(f"[INFO] Завантажено {len(examples)} тестових прикладів з {test_file}")
+                return examples
+                
+            else:
+                print(f"[WARN] Невідомий формат файлу {test_file}")
+                print(f"[INFO] Використовуються стандартні приклади")
+                return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
+                
+        except Exception as e:
+            print(f"[ERROR] Помилка при завантаженні {test_file}: {e}")
+            print(f"[INFO] Використовуються стандартні приклади")
+            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
 
+    GENERATE_EXAMPLES = load_test_examples()
+
+    # 8. Метрики та генерація звітів
     def compute_perplexity(logits, labels):
         loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100, reduction='none')
         shift_logits = logits[..., :-1, :].contiguous()
@@ -278,28 +276,29 @@ if __name__ == "__main__":
             json.dump(report, f, ensure_ascii=False, indent=2)
         print(f"[INFO] Звіт по епосі {epoch_index+1} збережено: {report_file}")
 
-    # 7. Тренування
+    # 9. Тренування
     print(f"\n[INFO] Старт тренування на {EPOCHS} епох(и)")
-
+    
     for epoch in range(EPOCHS):
         print(f"\n{'='*60}")
         print(f"===== Епоха {epoch+1} / {EPOCHS} =====")
         print(f"{'='*60}")
-
+        
         try:
             # Тренуємо 1 епоху
-            # resume_from використовується тільки для ПЕРШОЇ епохи якщо був чекпоінт
             if epoch == 0 and resume_from:
                 print(f"[INFO] Продовжуємо з чекпоінта: {resume_from}")
                 trainer.train(resume_from_checkpoint=resume_from)
             else:
                 trainer.train()
-
+                
         except KeyboardInterrupt:
             print(f"\n[WARN] ⚠ Тренування перервано користувачем (Ctrl+C)")
             print(f"[INFO] Зберігаємо поточний стан...")
             
             # Зберігаємо головну модель
+            if hasattr(model.config, 'tie_word_embeddings'):
+                model.config.tie_word_embeddings = True
             model.save_pretrained(MAIN_MODEL_DIR)
             tokenizer.save_pretrained(MAIN_MODEL_DIR)
             print(f"[INFO] ✓ Модель збережена у: {MAIN_MODEL_DIR}")
@@ -320,32 +319,24 @@ if __name__ == "__main__":
             print(f"[INFO] Для продовження запустіть скрипт знову")
             print("="*60)
             sys.exit(0)
-
+        
         # Після кожної епохи зберігаємо:
         
-        # 1) Головну модель у model/ (для використання/продовження без чекпоінта)
+        # 1) Головну модель у model/
         print(f"[INFO] Зберігаємо головну модель у: {MAIN_MODEL_DIR}")
-        
-        # Переконуємось що config має правильний tie_word_embeddings
         if hasattr(model.config, 'tie_word_embeddings'):
             model.config.tie_word_embeddings = True
-        
         model.save_pretrained(MAIN_MODEL_DIR)
         tokenizer.save_pretrained(MAIN_MODEL_DIR)
         
-        # 2) Чекпоінт у checkpoints/checkpoint-X/ (для точного відновлення)
+        # 2) Чекпоінт у checkpoints/checkpoint-X/
         checkpoint_epoch_dir = os.path.join(CHECKPOINT_DIR, f"checkpoint-{epoch+1}")
         print(f"[INFO] Зберігаємо чекпоінт у: {checkpoint_epoch_dir}")
         os.makedirs(checkpoint_epoch_dir, exist_ok=True)
         
-        # Переконуємось що config має правильний tie_word_embeddings
         if hasattr(model.config, 'tie_word_embeddings'):
             model.config.tie_word_embeddings = True
-        
-        # Зберігаємо модель + config
         trainer.save_model(checkpoint_epoch_dir)
-        
-        # Зберігаємо стан trainer (optimizer, scheduler, rng)
         trainer.save_state()
         
         # Копіюємо файли стану у checkpoint
@@ -355,7 +346,7 @@ if __name__ == "__main__":
             if os.path.exists(src):
                 shutil.copy2(src, dst)
                 print(f"  ✓ Скопійовано {fname}")
-
+        
         # Генеруємо звіт
         generate_report(epoch)
         
