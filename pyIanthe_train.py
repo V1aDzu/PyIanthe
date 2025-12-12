@@ -1,16 +1,19 @@
-# pyIanthe_train_final.py (ИСПРАВЛЕННАЯ ВЕРСИЯ)
+# pyIanthe_train_final.py
 import os
 import sys
 import json
 import torch
 import shutil
+import logging
+from datetime import datetime
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     Trainer,
     TrainingArguments,
     DataCollatorForLanguageModeling,
-    GPT2Config
+    GPT2Config,
+    TrainerCallback
 )
 from datasets import load_from_disk
 import pyIanthe_config
@@ -20,11 +23,11 @@ if not pyIanthe_config.DEBUG:
     import warnings
     warnings.filterwarnings("ignore")
     
-    import logging
-    logging.getLogger("transformers").setLevel(logging.ERROR)
-    logging.getLogger("transformers.modeling_utils").setLevel(logging.ERROR)
-    logging.getLogger("transformers.configuration_utils").setLevel(logging.ERROR)
-    logging.getLogger("transformers.modeling_tf_utils").setLevel(logging.ERROR)
+    import logging as std_logging
+    std_logging.getLogger("transformers").setLevel(std_logging.ERROR)
+    std_logging.getLogger("transformers.modeling_utils").setLevel(std_logging.ERROR)
+    std_logging.getLogger("transformers.configuration_utils").setLevel(std_logging.ERROR)
+    std_logging.getLogger("transformers.modeling_tf_utils").setLevel(std_logging.ERROR)
     
     from transformers import logging as transformers_logging
     transformers_logging.set_verbosity_error()
@@ -34,6 +37,38 @@ else:
     print("[INFO] DEBUG режим увімкнено, всі warnings показуються")
 # ================================================================
 
+# ==================== НАЛАШТУВАННЯ ЛОГУВАННЯ ====================
+def setup_logging():
+    """Налаштовує логування у файл та консоль"""
+    log_file = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.TRAINING_LOG_FILENAME)
+    
+    # Створюємо logger
+    logger = logging.getLogger('training')
+    logger.setLevel(logging.INFO)
+    
+    # Видаляємо старі handlers якщо є
+    logger.handlers.clear()
+    
+    # Handler для файлу
+    file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+    file_handler.setLevel(logging.INFO)
+    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    file_handler.setFormatter(file_formatter)
+    
+    # Handler для консолі
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_formatter = logging.Formatter('%(message)s')
+    console_handler.setFormatter(console_formatter)
+    
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    return logger
+
+logger = setup_logging()
+# ================================================================
+
 if __name__ == "__main__":
 
     # 0. GPU та налаштування
@@ -41,11 +76,12 @@ if __name__ == "__main__":
     fp16 = pyIanthe_config.FP16 if device == "cuda" else False
     pin_memory = pyIanthe_config.PIN_MEMORY if device == "cuda" else False
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
-    print(f"[INFO] Пристрій: {device}, GPU: {num_gpus}")
+    
+    logger.info(f"Пристрій: {device}, GPU: {num_gpus}")
     if device == "cuda":
-        print("[INFO] GPU знайдено:", torch.cuda.get_device_name(0))
+        logger.info(f"GPU знайдено: {torch.cuda.get_device_name(0)}")
     else:
-        print("[INFO] Тренування буде на CPU")
+        logger.info("Тренування буде на CPU")
 
     # 1. Папки
     CHECKPOINT_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_CHECKPOINTS)
@@ -91,26 +127,37 @@ if __name__ == "__main__":
     # 3. Завантаження датасету
     train_dataset_path = pyIanthe_config.FOLDER_TRAIN_DATASET
     if not os.path.exists(train_dataset_path):
-        print(f"[ERROR] Папка датасету не знайдена: {train_dataset_path}")
+        logger.error(f"Папка датасету не знайдена: {train_dataset_path}")
         sys.exit(1)
 
     arrow_files = [f for f in os.listdir(train_dataset_path) if f.endswith('.arrow')]
     dataset_info = os.path.join(train_dataset_path, 'dataset_info.json')
     if not arrow_files and not os.path.exists(dataset_info):
-        print(f"[ERROR] Папка {train_dataset_path} порожня або не містить датасет")
+        logger.error(f"Папка {train_dataset_path} порожня або не містить датасет")
         sys.exit(1)
 
     dataset = load_from_disk(train_dataset_path)
-    print(f"[INFO] Датасет завантажено, записів: {len(dataset)}")
+    logger.info(f"Датасет завантажено, записів: {len(dataset)}")
+
+    # Завантаження eval датасету якщо потрібно
+    eval_dataset = None
+    if pyIanthe_config.EVAL_ENABLED:
+        eval_dataset_path = pyIanthe_config.FOLDER_EVAL_DATASET
+        if os.path.exists(eval_dataset_path):
+            try:
+                eval_dataset = load_from_disk(eval_dataset_path)
+                logger.info(f"Eval датасет завантажено, записів: {len(eval_dataset)}")
+            except Exception as e:
+                logger.warning(f"Не вдалося завантажити eval датасет: {e}")
 
     # 4. Токенізатор
     tokenizer_source_dir = os.path.join(pyIanthe_config.FOLDER_MODELS, *pyIanthe_config.MODEL_ID.split("/"))
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_source_dir, local_files_only=True)
     tokenizer.model_max_length = CONTEXT_LENGTH
-    print(f"[INFO] Токенізатор завантажено з: {tokenizer_source_dir}")
+    logger.info(f"Токенізатор завантажено з: {tokenizer_source_dir}")
 
     dataset = dataset.filter(lambda x: isinstance(x.get("text", ""), str) and x["text"].strip())
-    print(f"[INFO] Після фільтрації: {len(dataset)} записів")
+    logger.info(f"Після фільтрації: {len(dataset)} записів")
     
     tokenized_dataset = dataset.map(lambda ex: tokenizer(ex["text"], truncation=True, max_length=CONTEXT_LENGTH),
                                     batched=True, remove_columns=["text"])
@@ -122,28 +169,28 @@ if __name__ == "__main__":
     main_model_exists = os.path.exists(os.path.join(MAIN_MODEL_DIR, "model.safetensors"))
 
     if checkpoint_has_model:
-        print(f"[INFO] Знайдено чекпоінт з моделлю: {last_checkpoint}")
-        print(f"[INFO] Завантажуємо модель з чекпоінта (навчання продовжиться)")
+        logger.info(f"Знайдено чекпоінт з моделлю: {last_checkpoint}")
+        logger.info("Завантажуємо модель з чекпоінта (навчання продовжиться)")
         model = AutoModelForCausalLM.from_pretrained(last_checkpoint, ignore_mismatched_sizes=False,
                                                      local_files_only=True).to(device)
         if hasattr(model, 'tie_weights'):
             model.tie_weights()
-            print("[INFO] ✓ Прив'язані ваги lm_head оновлено")
+            logger.info("✓ Прив'язані ваги lm_head оновлено")
         resume_from = last_checkpoint
         
     elif main_model_exists:
-        print(f"[INFO] Чекпоінта немає, але знайдено модель у: {MAIN_MODEL_DIR}")
-        print(f"[INFO] Завантажуємо модель (optimizer почнеться з нуля)")
+        logger.info(f"Чекпоінта немає, але знайдено модель у: {MAIN_MODEL_DIR}")
+        logger.info("Завантажуємо модель (optimizer почнеться з нуля)")
         model = AutoModelForCausalLM.from_pretrained(MAIN_MODEL_DIR, ignore_mismatched_sizes=False,
                                                      local_files_only=True).to(device)
         if hasattr(model, 'tie_weights'):
             model.tie_weights()
-            print("[INFO] ✓ Прив'язані ваги lm_head оновлено")
+            logger.info("✓ Прив'язані ваги lm_head оновлено")
         resume_from = None
         
     else:
-        print("[INFO] Не знайдено ні чекпоінта, ні моделі")
-        print("[INFO] Створюємо нову модель з конфігурації GPT2")
+        logger.info("Не знайдено ні чекпоінта, ні моделі")
+        logger.info("Створюємо нову модель з конфігурації GPT2")
         config = GPT2Config(
             vocab_size=vocab_size,
             n_positions=CONTEXT_LENGTH,
@@ -159,7 +206,7 @@ if __name__ == "__main__":
         model = AutoModelForCausalLM.from_config(config).to(device)
         resume_from = None
 
-    print(f"[INFO] Модель завантажена, параметрів: {model.num_parameters():,}")
+    logger.info(f"Модель завантажена, параметрів: {model.num_parameters():,}")
     
     # Перевірка привязки lm_head до embeddings
     if hasattr(model, 'lm_head') and hasattr(model, 'transformer'):
@@ -167,11 +214,230 @@ if __name__ == "__main__":
             lm_head_ptr = model.lm_head.weight.data_ptr()
             wte_ptr = model.transformer.wte.weight.data_ptr()
             if lm_head_ptr == wte_ptr:
-                print("[INFO] ✓ lm_head.weight правильно прив'язаний до wte")
+                logger.info("✓ lm_head.weight правильно прив'язаний до wte")
             else:
-                print("[WARN] ⚠ lm_head.weight НЕ прив'язаний до wte")
+                logger.warning("⚠ lm_head.weight НЕ прив'язаний до wte")
 
-    # 6. TrainingArguments і Trainer
+    # 6. Завантаження тестових прикладів
+    def load_test_examples():
+        """Завантажує тестові приклади з JSON файлу"""
+        test_file = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.TEXT_TEST_FILENAME)
+        
+        if not os.path.exists(test_file):
+            logger.warning(f"Файл тестових прикладів не знайдено: {test_file}")
+            logger.info("Використовуються стандартні приклади")
+            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
+        
+        try:
+            with open(test_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                
+            if isinstance(data, list):
+                examples = data[:pyIanthe_config.TEXT_TESTS_COUNT]
+                logger.info(f"Завантажено {len(examples)} тестових прикладів з {test_file}")
+                return examples
+                
+            elif isinstance(data, dict) and "examples" in data:
+                examples = data["examples"][:pyIanthe_config.TEXT_TESTS_COUNT]
+                logger.info(f"Завантажено {len(examples)} тестових прикладів з {test_file}")
+                return examples
+                
+            else:
+                logger.warning(f"Невідомий формат файлу {test_file}")
+                logger.info("Використовуються стандартні приклади")
+                return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
+                
+        except Exception as e:
+            logger.error(f"Помилка при завантаженні {test_file}: {e}")
+            logger.info("Використовуються стандартні приклади")
+            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
+
+    GENERATE_EXAMPLES = load_test_examples()
+
+    # 7. Функції тестування та метрик
+    def compute_perplexity(logits, labels):
+        """Обчислює perplexity"""
+        loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100, reduction='none')
+        shift_logits = logits[..., :-1, :].contiguous()
+        shift_labels = labels[..., 1:].contiguous()
+        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
+        return torch.exp(loss.mean()).item()
+
+    def compute_text_metrics(text):
+        """Обчислює метрики тексту"""
+        tokens = text.split()
+        total_tokens = len(tokens)
+        meaningful_tokens = sum(1 for t in tokens if t.isalnum())
+        perc_meaningful = meaningful_tokens / total_tokens * 100 if total_tokens else 0
+        return total_tokens, perc_meaningful
+
+    def test_text_generation(model, tokenizer, prompts, device):
+        """Тестує генерацію тексту на прикладах"""
+        model.eval()
+        results = {}
+        
+        generation_config = {
+            "max_new_tokens": TRAINING_CONFIG["max_new_tokens"],
+            "temperature": TRAINING_CONFIG["temperature"],
+            "top_p": TRAINING_CONFIG["top_p"],
+            "do_sample": True,
+            "pad_token_id": tokenizer.eos_token_id
+        }
+        
+        for prompt in prompts:
+            inputs = tokenizer(prompt, return_tensors="pt").to(device)
+            
+            with torch.no_grad():
+                # Генерація
+                outputs = model.generate(**inputs, **generation_config)
+                generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                
+                # Метрики
+                logits = model(**inputs).logits
+                ppl = compute_perplexity(logits, inputs["input_ids"])
+                total_tokens, perc_meaningful = compute_text_metrics(generated_text)
+                
+                results[prompt] = {
+                    "generated_text": generated_text,
+                    "perplexity": ppl,
+                    "total_tokens": total_tokens,
+                    "perc_meaningful_tokens": perc_meaningful
+                }
+        
+        model.train()
+        return results
+
+    def test_eval_dataset(model, tokenizer, eval_dataset, device, max_samples):
+        """Тестує модель на eval датасеті"""
+        if eval_dataset is None:
+            return None
+            
+        model.eval()
+        
+        # Обмежуємо кількість зразків
+        test_samples = min(max_samples, len(eval_dataset))
+        eval_subset = eval_dataset.select(range(test_samples))
+        
+        total_loss = 0
+        total_perplexity = 0
+        num_samples = 0
+        
+        with torch.no_grad():
+            for sample in eval_subset:
+                try:
+                    text = sample.get("text", "")
+                    if not text or not isinstance(text, str):
+                        continue
+                    
+                    inputs = tokenizer(text, return_tensors="pt", truncation=True, 
+                                     max_length=CONTEXT_LENGTH).to(device)
+                    
+                    outputs = model(**inputs, labels=inputs["input_ids"])
+                    loss = outputs.loss.item()
+                    ppl = torch.exp(outputs.loss).item()
+                    
+                    total_loss += loss
+                    total_perplexity += ppl
+                    num_samples += 1
+                    
+                except Exception as e:
+                    if pyIanthe_config.DEBUG:
+                        logger.warning(f"Помилка обробки зразка: {e}")
+                    continue
+        
+        model.train()
+        
+        if num_samples == 0:
+            return None
+        
+        return {
+            "num_samples": num_samples,
+            "avg_loss": total_loss / num_samples,
+            "avg_perplexity": total_perplexity / num_samples
+        }
+
+    # 8. Callback для промежуточного тестування
+    class TestingCallback(TrainerCallback):
+        """Callback для запуску тестів під час тренування"""
+        
+        def __init__(self, model, tokenizer, device, test_prompts, eval_dataset):
+            self.model = model
+            self.tokenizer = tokenizer
+            self.device = device
+            self.test_prompts = test_prompts
+            self.eval_dataset = eval_dataset
+            self.current_epoch = 0
+        
+        def on_epoch_begin(self, args, state, control, **kwargs):
+            """Відслідковує початок епохи"""
+            self.current_epoch = int(state.epoch) if state.epoch is not None else 0
+        
+        def on_step_end(self, args, state, control, **kwargs):
+            """Викликається після кожного кроку"""
+            # Перевіряємо чи потрібно запускати тести
+            if state.global_step % pyIanthe_config.EVAL_STEPS != 0:
+                return
+            
+            if state.global_step == 0:
+                return
+            
+            # Запускаємо тести
+            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            logger.info(f"\n{'='*60}")
+            logger.info(f"ПРОМІЖНЕ ТЕСТУВАННЯ")
+            logger.info(f"Епоха: {self.current_epoch}, Крок: {state.global_step}")
+            logger.info(f"Час: {timestamp}")
+            logger.info(f"{'='*60}")
+            
+            test_results = {
+                "timestamp": timestamp,
+                "epoch": self.current_epoch,
+                "global_step": state.global_step,
+                "text_generation": None,
+                "eval_dataset": None
+            }
+            
+            # Тест генерації тексту
+            if pyIanthe_config.TEST_ENABLED and self.test_prompts:
+                logger.info("\n[TEST] Тестування генерації тексту...")
+                text_results = test_text_generation(
+                    self.model, self.tokenizer, self.test_prompts, self.device
+                )
+                test_results["text_generation"] = text_results
+                
+                # Виводимо приклад
+                first_prompt = self.test_prompts[0]
+                result = text_results[first_prompt]
+                logger.info(f"  Промпт: {first_prompt}")
+                logger.info(f"  Текст: {result['generated_text'][:100]}...")
+                logger.info(f"  Perplexity: {result['perplexity']:.2f}")
+                logger.info(f"  Токенів: {result['total_tokens']}")
+            
+            # Тест на eval датасеті
+            if pyIanthe_config.EVAL_ENABLED and self.eval_dataset:
+                logger.info("\n[EVAL] Тестування на eval датасеті...")
+                eval_results = test_eval_dataset(
+                    self.model, self.tokenizer, self.eval_dataset, 
+                    self.device, pyIanthe_config.EVAL_TESTS_COUNT
+                )
+                if eval_results:
+                    test_results["eval_dataset"] = eval_results
+                    logger.info(f"  Зразків: {eval_results['num_samples']}")
+                    logger.info(f"  Avg Loss: {eval_results['avg_loss']:.4f}")
+                    logger.info(f"  Avg Perplexity: {eval_results['avg_perplexity']:.2f}")
+            
+            # Зберігаємо JSON звіт
+            report_filename = f"test_epoch{self.current_epoch}_step{state.global_step}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            report_path = os.path.join(REPORTS_DIR, report_filename)
+            
+            with open(report_path, "w", encoding="utf-8") as f:
+                json.dump(test_results, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"\n✓ Звіт збережено: {report_filename}")
+            logger.info(f"{'='*60}\n")
+
+    # 9. TrainingArguments і Trainer
     training_args = TrainingArguments(
         output_dir=CHECKPOINT_DIR,
         overwrite_output_dir=False,
@@ -179,7 +445,7 @@ if __name__ == "__main__":
         per_device_train_batch_size=PER_DEVICE_BATCH_SIZE,
         save_steps=SAVE_STEPS,
         save_total_limit=pyIanthe_config.SAVE_LIMIT,
-        logging_steps=500,
+        logging_steps=100,  # Частіше логувати для моніторингу
         learning_rate=LEARNING_RATE,
         weight_decay=pyIanthe_config.WEIGHT_DECAY,
         fp16=fp16,
@@ -189,67 +455,31 @@ if __name__ == "__main__":
         disable_tqdm=False
     )
 
+    # Створюємо callback
+    testing_callback = TestingCallback(
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
+        test_prompts=GENERATE_EXAMPLES if pyIanthe_config.TEST_ENABLED else None,
+        eval_dataset=eval_dataset if pyIanthe_config.EVAL_ENABLED else None
+    )
+
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_dataset,
-        data_collator=data_collator
+        data_collator=data_collator,
+        callbacks=[testing_callback]  # Додаємо callback
     )
 
-    # 7. Завантаження тестових прикладів з JSON
-    def load_test_examples():
-        """Завантажує тестові приклади з JSON файлу"""
-        test_file = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.TEXT_TEST_FILENAME)
-        
-        if not os.path.exists(test_file):
-            print(f"[WARN] Файл тестових прикладів не знайдено: {test_file}")
-            print(f"[INFO] Використовуються стандартні приклади")
-            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
-        
-        try:
-            with open(test_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                
-            if isinstance(data, list):
-                examples = data[:pyIanthe_config.TEXT_TESTS_COUNT]
-                print(f"[INFO] Завантажено {len(examples)} тестових прикладів з {test_file}")
-                return examples
-                
-            elif isinstance(data, dict) and "examples" in data:
-                examples = data["examples"][:pyIanthe_config.TEXT_TESTS_COUNT]
-                print(f"[INFO] Завантажено {len(examples)} тестових прикладів з {test_file}")
-                return examples
-                
-            else:
-                print(f"[WARN] Невідомий формат файлу {test_file}")
-                print(f"[INFO] Використовуються стандартні приклади")
-                return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
-                
-        except Exception as e:
-            print(f"[ERROR] Помилка при завантаженні {test_file}: {e}")
-            print(f"[INFO] Використовуються стандартні приклади")
-            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
-
-    GENERATE_EXAMPLES = load_test_examples()
-
-    # 8. Метрики та генерація звітів
-    def compute_perplexity(logits, labels):
-        loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100, reduction='none')
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-        return torch.exp(loss.mean()).item()
-
-    def compute_metrics(text):
-        tokens = text.split()
-        total_tokens = len(tokens)
-        meaningful_tokens = sum(1 for t in tokens if t.isalnum())
-        perc_meaningful = meaningful_tokens / total_tokens * 100 if total_tokens else 0
-        return total_tokens, perc_meaningful
-
-    def generate_report(epoch_index):
+    # 10. Функція для фінального звіту після епохи
+    def generate_epoch_report(epoch_index):
+        """Генерує детальний звіт після завершення епохи"""
         model.eval()
         report = {}
+        
+        logger.info(f"\n[REPORT] Генерація звіту по епосі {epoch_index+1}...")
+        
         for prompt in GENERATE_EXAMPLES:
             inputs = tokenizer(prompt, return_tensors="pt").to(device)
             with torch.no_grad():
@@ -262,7 +492,7 @@ if __name__ == "__main__":
                     pad_token_id=tokenizer.eos_token_id
                 )
                 text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                avg_len, perc_meaningful = compute_metrics(text)
+                avg_len, perc_meaningful = compute_text_metrics(text)
                 logits = model(**inputs).logits
                 ppl = compute_perplexity(logits, inputs["input_ids"])
                 report[prompt] = {
@@ -271,37 +501,50 @@ if __name__ == "__main__":
                     "avg_length": avg_len,
                     "perc_meaningful_tokens": perc_meaningful
                 }
+        
         report_file = os.path.join(REPORTS_DIR, f"report_epoch_{epoch_index+1}.json")
         with open(report_file, "w", encoding="utf-8") as f:
             json.dump(report, f, ensure_ascii=False, indent=2)
-        print(f"[INFO] Звіт по епосі {epoch_index+1} збережено: {report_file}")
+        
+        logger.info(f"✓ Звіт по епосі {epoch_index+1} збережено: {report_file}")
+        model.train()
 
-    # 9. Тренування
-    print(f"\n[INFO] Старт тренування на {EPOCHS} епох(и)")
+    # 11. Тренування
+    logger.info(f"\n{'='*60}")
+    logger.info(f"СТАРТ ТРЕНУВАННЯ")
+    logger.info(f"Епох: {EPOCHS}")
+    logger.info(f"Тестування: {'Увімкнено' if pyIanthe_config.TEST_ENABLED else 'Вимкнено'}")
+    logger.info(f"Eval: {'Увімкнено' if pyIanthe_config.EVAL_ENABLED else 'Вимкнено'}")
+    if pyIanthe_config.TEST_ENABLED or pyIanthe_config.EVAL_ENABLED:
+        logger.info(f"Частота тестів: кожні {pyIanthe_config.EVAL_STEPS} кроків")
+    logger.info(f"{'='*60}\n")
     
     for epoch in range(EPOCHS):
-        print(f"\n{'='*60}")
-        print(f"===== Епоха {epoch+1} / {EPOCHS} =====")
-        print(f"{'='*60}")
+        logger.info(f"\n{'='*60}")
+        logger.info(f"===== Епоха {epoch+1} / {EPOCHS} =====")
+        logger.info(f"{'='*60}")
+        
+        # Оновлюємо епоху в callback
+        testing_callback.current_epoch = epoch + 1
         
         try:
             # Тренуємо 1 епоху
             if epoch == 0 and resume_from:
-                print(f"[INFO] Продовжуємо з чекпоінта: {resume_from}")
+                logger.info(f"Продовжуємо з чекпоінта: {resume_from}")
                 trainer.train(resume_from_checkpoint=resume_from)
             else:
                 trainer.train()
                 
         except KeyboardInterrupt:
-            print(f"\n[WARN] ⚠ Тренування перервано користувачем (Ctrl+C)")
-            print(f"[INFO] Зберігаємо поточний стан...")
+            logger.warning(f"\n⚠ Тренування перервано користувачем (Ctrl+C)")
+            logger.info("Зберігаємо поточний стан...")
             
             # Зберігаємо головну модель
             if hasattr(model.config, 'tie_word_embeddings'):
                 model.config.tie_word_embeddings = True
             model.save_pretrained(MAIN_MODEL_DIR)
             tokenizer.save_pretrained(MAIN_MODEL_DIR)
-            print(f"[INFO] ✓ Модель збережена у: {MAIN_MODEL_DIR}")
+            logger.info(f"✓ Модель збережена у: {MAIN_MODEL_DIR}")
             
             # Зберігаємо аварійний чекпоінт
             emergency_checkpoint = os.path.join(CHECKPOINT_DIR, f"checkpoint-interrupted-epoch{epoch+1}")
@@ -315,15 +558,14 @@ if __name__ == "__main__":
                 if os.path.exists(src):
                     shutil.copy2(src, dst)
             
-            print(f"[INFO] ✓ Аварійний чекпоінт: {emergency_checkpoint}")
-            print(f"[INFO] Для продовження запустіть скрипт знову")
-            print("="*60)
+            logger.info(f"✓ Аварійний чекпоінт: {emergency_checkpoint}")
+            logger.info("Для продовження запустіть скрипт знову")
             sys.exit(0)
         
         # Після кожної епохи зберігаємо:
         
         # 1) Головну модель у model/
-        print(f"[INFO] Зберігаємо головну модель у: {MAIN_MODEL_DIR}")
+        logger.info(f"\nЗберігаємо головну модель у: {MAIN_MODEL_DIR}")
         if hasattr(model.config, 'tie_word_embeddings'):
             model.config.tie_word_embeddings = True
         model.save_pretrained(MAIN_MODEL_DIR)
@@ -331,7 +573,7 @@ if __name__ == "__main__":
         
         # 2) Чекпоінт у checkpoints/checkpoint-X/
         checkpoint_epoch_dir = os.path.join(CHECKPOINT_DIR, f"checkpoint-{epoch+1}")
-        print(f"[INFO] Зберігаємо чекпоінт у: {checkpoint_epoch_dir}")
+        logger.info(f"Зберігаємо чекпоінт у: {checkpoint_epoch_dir}")
         os.makedirs(checkpoint_epoch_dir, exist_ok=True)
         
         if hasattr(model.config, 'tie_word_embeddings'):
@@ -345,18 +587,18 @@ if __name__ == "__main__":
             dst = os.path.join(checkpoint_epoch_dir, fname)
             if os.path.exists(src):
                 shutil.copy2(src, dst)
-                print(f"  ✓ Скопійовано {fname}")
         
-        # Генеруємо звіт
-        generate_report(epoch)
+        # Генеруємо фінальний звіт епохи
+        generate_epoch_report(epoch)
         
-        print(f"\n[SUCCESS] Епоха {epoch+1} завершена і збережена")
-        print(f"  → Модель: {MAIN_MODEL_DIR}")
-        print(f"  → Чекпоінт: {checkpoint_epoch_dir}")
+        logger.info(f"\n[SUCCESS] Епоха {epoch+1} завершена і збережена")
+        logger.info(f"  → Модель: {MAIN_MODEL_DIR}")
+        logger.info(f"  → Чекпоінт: {checkpoint_epoch_dir}")
 
-    print("\n" + "="*60)
-    print("[SUCCESS] Тренування завершено!")
-    print(f"Всього епох: {EPOCHS}")
-    print(f"Фінальна модель: {MAIN_MODEL_DIR}")
-    print(f"Звіти: {REPORTS_DIR}")
-    print("="*60)
+    logger.info(f"\n{'='*60}")
+    logger.info("[SUCCESS] ТРЕНУВАННЯ ЗАВЕРШЕНО!")
+    logger.info(f"Всього епох: {EPOCHS}")
+    logger.info(f"Фінальна модель: {MAIN_MODEL_DIR}")
+    logger.info(f"Звіти: {REPORTS_DIR}")
+    logger.info(f"Лог: {pyIanthe_config.TRAINING_LOG_FILENAME}")
+    logger.info(f"{'='*60}")

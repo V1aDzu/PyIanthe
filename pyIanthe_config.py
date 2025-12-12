@@ -14,7 +14,6 @@ FOLDER_EVAL_DATASET = "dataset/eval"
 FOLDER_CHECKPOINTS = "checkpoints"
 FOLDER_REPORTS = "reports"
 FOLDER_MODEL = "model"
-#FOLDER_TOKENIZER = "tokenizer"
 
 # --- ФАЙЛИ МОДЕЛІ ---
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
@@ -42,9 +41,11 @@ PIN_MEMORY = True           # прискорення на GPU
 FP16 = True                 # половинна точність на GPU
 
 # --- НАЛАШТУВАННЯ ПОРІВНЯННЯ ---
-EVAL_ENABLED = True
-EVAL_STEPS = 500
-TEXT_TESTS_COUNT = 10
+TEST_ENABLED = True      # Тести генерації тексту
+EVAL_ENABLED = True      # Тести на eval датасеті
+EVAL_STEPS = 310         # Кожні 500 кроків
+TEXT_TESTS_COUNT = 10    # 10 промптів
+EVAL_TESTS_COUNT = 10    # 10 примерів из eval
 EVAL_PERCENT = 5
 
 #        Recommended eval sizes 
