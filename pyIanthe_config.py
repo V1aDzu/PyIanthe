@@ -48,9 +48,9 @@ GRADIENT_ACCUMULATION_STEPS = 1  # Кількість кроків для аку
 #   PER_DEVICE_BATCH_SIZE=4, GRADIENT_ACCUMULATION_STEPS=2  → Ефективний батч = 8
 
 # --- НАЛАШТУВАННЯ ТЕСТУВАННЯ ---
-TEST_ENABLED = False      # Тести генерації тексту
-EVAL_ENABLED = False      # Тести на eval датасеті
-EVAL_STEPS = 310         # Кожні 500 кроків
+TEST_ENABLED = False     # Тести генерації тексту
+EVAL_ENABLED = False     # Тести на eval датасеті
+EVAL_STEPS = 110         # Кожні 500 кроків
 TEXT_TESTS_COUNT = 10    # 10 промптів
 EVAL_TESTS_COUNT = 10    # 10 примерів из eval
 

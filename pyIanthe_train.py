@@ -416,6 +416,10 @@ if __name__ == "__main__":
             if state.global_step == 0:
                 return
             
+            # Якщо обидва тести вимкнені - не запускати callback взагалі
+            if not pyIanthe_config.TEST_ENABLED and not pyIanthe_config.EVAL_ENABLED:
+                return
+            
             # Запускаємо тести
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
@@ -462,14 +466,18 @@ if __name__ == "__main__":
                     logger.info(f"  Avg Loss: {eval_results['avg_loss']:.4f}")
                     logger.info(f"  Avg Perplexity: {eval_results['avg_perplexity']:.2f}")
             
-            # Зберігаємо JSON звіт
-            report_filename = f"test_epoch{self.current_epoch}_step{state.global_step}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-            report_path = os.path.join(REPORTS_DIR, report_filename)
+            # Зберігаємо JSON звіт тільки якщо є результати
+            if test_results["text_generation"] or test_results["eval_dataset"]:
+                report_filename = f"test_epoch{self.current_epoch}_step{state.global_step}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+                report_path = os.path.join(REPORTS_DIR, report_filename)
+                
+                with open(report_path, "w", encoding="utf-8") as f:
+                    json.dump(test_results, f, ensure_ascii=False, indent=2)
+                
+                logger.info(f"\n✓ Звіт збережено: {report_filename}")
+            else:
+                logger.info(f"\n[INFO] Тести вимкнені, звіт не створено")
             
-            with open(report_path, "w", encoding="utf-8") as f:
-                json.dump(test_results, f, ensure_ascii=False, indent=2)
-            
-            logger.info(f"\n✓ Звіт збережено: {report_filename}")
             logger.info(f"{'='*60}\n")
 
     # 9. TrainingArguments і Trainer
