@@ -1,0 +1,515 @@
+[ 
+  {
+    "name": "oscar_en",
+    "hf_id": "oscar-corpus/oscar-en",
+    "split": "train[:200000]",
+    "lang": "en",
+    "clean": "medium",
+    "info": "Большой корпус английских текстов из OSCAR (Common Crawl)",
+    "purpose": "LM"
+  },
+  {
+    "name": "oscar_ru",
+    "hf_id": "oscar-corpus/oscar-ru",
+    "split": "train[:200000]",
+    "lang": "ru",
+    "clean": "medium",
+    "info": "Большой корпус русских текстов из OSCAR (Common Crawl)",
+    "purpose": "LM"
+  },
+  {
+    "name": "oscar_uk",
+    "hf_id": "oscar-corpus/oscar-uk",
+    "split": "train[:150000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Большой корпус украинских текстов из OSCAR (Common Crawl)",
+    "purpose": "LM"
+  },
+  {
+    "name": "openwebtext",
+    "hf_id": "openwebtext/openwebtext",
+    "split": "train[:100000]",
+    "lang": "en",
+    "clean": "medium",
+    "info": "Корпус, близкий к OpenWebText, английский Web‑текст",
+    "purpose": "LM"
+  },
+  {
+    "name": "wikipedia_en",
+    "hf_id": "wiki_wikidata/wikipedia_en",
+    "split": "train[:80000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Английская Википедия",
+    "purpose": "LM, QA"
+  },
+  {
+    "name": "wikipedia_ru",
+    "hf_id": "danasone/wikipedia_ru",
+    "split": "train[:90000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Русская Википедия для LM/QA",
+    "purpose": "LM, QA"
+  },
+  {
+    "name": "wikipedia_uk",
+    "hf_id": "wiki_wikidata/wikipedia_uk",
+    "split": "train[:80000]",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Украинская Википедия",
+    "purpose": "LM, QA"
+  },
+  {
+    "name": "wikipedia_RuDataset",
+    "hf_id": "nvjob/wikipedia-RuDataset",
+    "split": "train[:40000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Подготовленный корпус русской Википедии для LLM",
+    "purpose": "LM"
+  },
+  {
+    "name": "tatoeba",
+    "hf_id": "tatoeba/tatoeba",
+    "split": "train[:30000]",
+    "lang": "multi",
+    "clean": "high",
+    "info": "Параллельные предложения на множестве языков (в т.ч. en/ru/uk)",
+    "purpose": "MT, LM"
+  },
+  {
+    "name": "wiki-edits-uk",
+    "hf_id": "osyvokon/wiki-edits-uk",
+    "split": "full/train",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Изменения предложений из истории украинской Википедии",
+    "purpose": "GEC, Spell‑check"
+  },
+  {
+    "name": "oscar_common",
+    "hf_id": "oscar-corpus/OSCAR-2201",
+    "split": "train[:200000]",
+    "lang": "multi",
+    "clean": "medium",
+    "info": "Мультилингвальный корпус OSCAR, включает en/ru/uk и др.", 
+    "purpose": "LM"
+  },
+  {
+    "name": "bigscience_c4",
+    "hf_id": "bigscience/c4",
+    "split": "train[:150000]",
+    "lang": "en",
+    "clean": "medium",
+    "info": "Многоязычный C4 корпус (англ. часть)",
+    "purpose": "LM"
+  },
+  {
+    "name": "multi_c4",
+    "hf_id": "mC4/mC4",
+    "split": "train[:150000]",
+    "lang": "multi",
+    "clean": "medium",
+    "info": "Multilingual C4 (в т.ч. en/ru/uk части)",
+    "purpose": "LM"
+  },
+  {
+    "name": "crossnews_ua",
+    "hf_id": "crossnews/ua",
+    "split": "train[:20000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Кросс‑лингвальный news‑dataset (uk/ru/en)",
+    "purpose": "LM, QA"
+  },
+  {
+    "name": "gbw_ru",
+    "hf_id": "gbw/gutenberg_bookscorpus_wikipedia_ru",
+    "split": "train[:50000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Сочетание Gutenberg + BookCorpus + Russian Wikipedia",
+    "purpose": "LM"
+  },
+  {
+    "name": "gbw_en",
+    "hf_id": "gbw/gutenberg_bookscorpus_wikipedia_en",
+    "split": "train[:50000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Сочетание Gutenberg + BookCorpus + English Wikipedia",
+    "purpose": "LM"
+  },
+  {
+    "name": "wiki_text_ru",
+    "hf_id": "wiki_text/wikitext-103-raw-v1",
+    "split": "train[:50000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Wikitext‑103 Raw (англ.) — полезен для языкового моделирования",
+    "purpose": "LM"
+  },
+  {
+    "name": "multi_ntxo",
+    "hf_id": "multi_ntxo/multi_ntxo",
+    "split": "train[:30000]",
+    "lang": "multi",
+    "clean": "medium",
+    "info": "Разнородный мультиязычный корпус",
+    "purpose": "LM"
+  },
+  {
+    "name": "ukr_detect_formality",
+    "hf_id": "ukr-detect/ukr-formality-dataset-translated-gyafc",
+    "split": "train[:10000]",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Переведённый датасет формальности (uk)",
+    "purpose": "style, classification"
+  },
+  {
+    "name": "translated_nli_ru",
+    "hf_id": "ukr-detect/ukr-nli-translated", 
+    "split": "train[:10000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Переведённый NLI датасет (русский)",
+    "purpose": "classification"
+  },
+  {
+    "name": "multi_toxic_lexicon",
+    "hf_id": "textdetox/multilingual_toxic_lexicon",
+    "split": "train[:20000]",
+    "lang": "multi",
+    "clean": "medium",
+    "info": "Мультиязычный токсик‑лексикон (в т.ч. en/ru/uk)",
+    "purpose": "LM, detox filtering"
+  },
+  {
+    "name": "bnc_conversational_en",
+    "hf_id": "bnc_conversational/bnc_conversational",
+    "split": "train[:20000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Корпус живой речи BNC (англ.)",
+    "purpose": "chat‑style LM"
+  },
+  {
+    "name": "opus100_ru_en",
+    "hf_id": "opus100/ru-en",
+    "split": "train[:30000]",
+    "lang": "multi",
+    "clean": "medium",
+    "info": "Билингвальные пары ru↔en",
+    "purpose": "MT, LM"
+  },
+  {
+    "name": "opus100_uk_en",
+    "hf_id": "opus100/uk-en",
+    "split": "train[:30000]",
+    "lang": "multi",
+    "clean": "medium",
+    "info": "Билингвальные пары uk↔en",
+    "purpose": "MT, LM"
+  },
+  {
+    "name": "wikitext_ru",
+    "hf_id": "wikitext/wikitext-2-raw-v1",
+    "split": "train[:20000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Короткий Wikitext для LM (англ.)",
+    "purpose": "LM"
+  },
+  {
+    "name": "ag_news",
+    "hf_id": "ag_news/ag_news",
+    "split": "train",
+    "lang": "en",
+    "clean": "high",
+    "info": "Классификация новостей (англ.)",
+    "purpose": "classification"
+  },
+  {
+    "name": "commons_voice_ru",
+    "hf_id": "mozilla/commons_voice_ru",
+    "split": "train[:50000]",
+    "lang": "ru",
+    "clean": "medium",
+    "info": "Текстовая транскрипция речи на русском (из CV)",
+    "purpose": "ASR/Linguistic"
+  },
+  {
+    "name": "commons_voice_uk",
+    "hf_id": "mozilla/commons_voice_uk",
+    "split": "train[:50000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Текстовая транскрипция речи на украинском (из CV)",
+    "purpose": "ASR/Linguistic"
+  },
+  {
+    "name": "wiki_edits_ru",
+    "hf_id": "osyvokon/wiki-edits-ru",
+    "split": "full/train",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Изменения предложений из русской Википедии",
+    "purpose": "GEC/Spell‑check"
+  },
+  {
+    "name": "wikipedia_ru",
+    "hf_id": "danasone/wikipedia_ru",
+    "split": "train[:50000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Википедия на русском языке, проверенный текст, подходит для LM, QA, NER",
+    "purpose": "LM, QA, NER"
+  },
+  {
+    "name": "wikipedia_RuDataset",
+    "hf_id": "nvjob/wikipedia-RuDataset",
+    "split": "train[:10000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Небольшой проверенный кусок Википедии для тестирования моделей, LM, NER",
+    "purpose": "test LM, NER"
+  },
+  {
+    "name": "wikipedia_uk",
+    "hf_id": "wiki_wikidata/wikipedia_uk",
+    "split": "train[:50000]",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Стандартный корпус Википедии на украинском",
+    "purpose": "LM, QA"
+  },  
+  {
+    "name": "oscar_en",
+    "hf_id": "oscar-corpus/oscar-en",
+    "split": "train[:100000]",
+    "lang": "en",
+    "clean": "medium",
+    "info": "Крупный корпус текстов английского языка из Common Crawl",
+    "purpose": "LM"
+  },
+  {
+    "name": "oscar_ru",
+    "hf_id": "oscar-corpus/OSCAR-2201",
+    "split": "train[:100000]",
+    "lang": "ru",
+    "clean": "medium",
+    "info": "Крупный корпус с Common Crawl для русского языка",
+    "purpose": "LM"
+  },
+  {
+    "name": "oscar_uk",
+    "hf_id": "oscar-corpus/OSCAR-2201",
+    "split": "train[:100000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Крупный корпус с Common Crawl для украинского языка",
+    "purpose": "LM"
+  },
+  {
+    "name": "oscar_uk",
+    "hf_id": "oscar-corpus/oscar-uk",
+    "split": "train[:100000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Крупный корпус текстов украинского языка из Common Crawl",
+    "purpose": "LM"
+  },
+  {
+    "name": "wikiomnia_ru",
+    "hf_id": "wikiomnia/ru_qa",
+    "split": "train[:10000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "QA-пары на основе русской Википедии",
+    "purpose": "QA, LM"
+  },
+  {
+    "name": "COSMUS",
+    "hf_id": "YShynkarov/COSMUS",
+    "split": "train[:5000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Объединенный корпус текстов украинских СМИ и соцсетей, часть текста может содержать шум",
+    "purpose": "LM"
+  },
+  {
+    "name": "razmecheno",
+    "hf_id": "razmecheno/ner",
+    "split": "train[:10000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Небольшой аннотированный корпус NER из дневников (русский)",
+    "purpose": "NER"
+  },
+  {
+    "name": "ubertext_uk",
+    "hf_id": "ubertext/uk",
+    "split": "train[:50000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Разнородный корпус текстов украинского языка: веб, новости, литература",
+    "purpose": "LM"
+  },
+  {
+    "name": "crossnews_ua",
+    "hf_id": "crossnews/ua",
+    "split": "train[:20000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Кросс-лингвальный датасет новостей: украинский, русский, английский",
+    "purpose": "LM, QA"
+  },
+   {
+    "name": "wiki-edits-uk",
+    "hf_id": "osyvokon/wiki-edits-uk",
+    "split": "full/train",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Изменения предложений из истории украинской Википедии",
+    "purpose": "GEC, Spell‑check"
+  },
+  {
+    "name": "gbw_ru",
+    "hf_id": "gbw/gutenberg_bookscorpus_wikipedia_ru",
+    "split": "train[:50000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Сочетание Gutenberg + BookCorpus + Russian Wikipedia",
+    "purpose": "LM"
+  },
+   {
+    "name": "wiki_text_ru",
+    "hf_id": "wiki_text/wikitext-103-raw-v1",
+    "split": "train[:50000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Wikitext‑103 Raw (англ.) — полезен для языкового моделирования",
+    "purpose": "LM"
+  },
+  {
+    "name": "ukr_detect_formality",
+    "hf_id": "ukr-detect/ukr-formality-dataset-translated-gyafc",
+    "split": "train[:10000]",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Переведённый датасет формальности (uk)",
+    "purpose": "style, classification"
+  },
+  {
+    "name": "bnc_conversational_en",
+    "hf_id": "bnc_conversational/bnc_conversational",
+    "split": "train[:20000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Корпус живой речи BNC (англ.)",
+    "purpose": "chat‑style LM"
+  },
+  {
+    "name": "tatoeba",
+    "hf_id": "tatoeba/tatoeba",
+    "split": "train[:10000]",
+    "lang": "multi",
+    "clean": "high",
+    "info": "Параллельные предложения на более чем 400 языках, включая англ, рус, укр",
+    "purpose": "MT, LM"
+  },
+  {
+    "name": "translated_nli_uk",
+    "hf_id": "ukr-detect/ukr-nli-translated",
+    "split": "train[:10000]",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Параллельные ресурсы для NLI на украинском",
+    "purpose": "NLI, LM"
+  },
+  {
+    "name": "multilingual_translation_instruct",
+    "hf_id": "multilingual/translation_instruct",
+    "split": "train[:10000]",
+    "lang": "multi",
+    "clean": "high",
+    "info": "Мультиязычный корпус инструкций, включая русский и английский переводы",
+    "purpose": "LM, Instruction"
+  },
+  {
+    "name": "openwebtext",
+    "hf_id": "openwebtext/openwebtext",
+    "split": "train[:50000]",
+    "lang": "en",
+    "clean": "medium",
+    "info": "Английский корпус из Common Crawl, похожий на OpenWebText",
+    "purpose": "LM"
+  },
+  {
+    "name": "the_pile",
+    "hf_id": "EleutherAI/the_pile",
+    "split": "train[:50000]",
+    "lang": "en",
+    "clean": "medium",
+    "info": "Массивный корпус английских текстов: веб, книги, StackExchange и др.",
+    "purpose": "LM"
+  },
+  {
+    "name": "oscar_uk",
+    "hf_id": "oscar-corpus/oscar-uk",
+    "split": "train[:100000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Крупный корпус текстов украинского языка из Common Crawl",
+    "purpose": "LM"
+  },
+  {
+    "name": "COSMUS",
+    "hf_id": "YShynkarov/COSMUS",
+    "split": "train[:5000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Объединенный корпус текстов украинских СМИ и соцсетей, часть текста может содержать шум",
+    "purpose": "LM"
+  },
+  {
+    "name": "ubertext_uk",
+    "hf_id": "ubertext/uk",
+    "split": "train[:50000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Разнородный корпус текстов украинского языка: веб, новости, литература",
+    "purpose": "LM"
+  },
+  {
+    "name": "crossnews_ua",
+    "hf_id": "crossnews/ua",
+    "split": "train[:20000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Кросс-лингвальный датасет новостей: украинский, русский, английский",
+    "purpose": "LM, QA"
+  },
+  {
+    "name": "openwebtext",
+    "hf_id": "openwebtext/openwebtext",
+    "split": "train[:50000]",
+    "lang": "en",
+    "clean": "medium",
+    "info": "Английский корпус из Common Crawl, похожий на OpenWebText",
+    "purpose": "LM"
+  },
+  {
+    "name": "the_pile",
+    "hf_id": "EleutherAI/the_pile",
+    "split": "train[:50000]",
+    "lang": "en",
+    "clean": "medium",
+    "info": "Массивный корпус английских текстов: веб, книги, StackExchange и др.",
+    "purpose": "LM"
+  }
+]

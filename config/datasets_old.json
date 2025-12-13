@@ -1,0 +1,119 @@
+[
+  {
+    "name": "openwebtext",
+    "hf_id": "Skylion007/openwebtext",
+    "split": "train[:1%]",
+    "lang": "en",
+    "clean": "medium",
+    "info": "LM pretraining corpus, крупный веб-текст, автоматический сбор, может содержать шум",
+    "purpose": "LM pretraining"
+  },
+  {
+    "name": "wikipedia_ru",
+    "hf_id": "danasone/wikipedia_ru",
+    "split": "train[:50000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Википедия на русском языке, проверенный текст, подходит для LM, QA, NER",
+    "purpose": "LM, QA, NER"
+  },
+  {
+    "name": "wikipedia_RuDataset",
+    "hf_id": "nvjob/wikipedia-RuDataset",
+    "split": "train[:10000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Небольшой проверенный кусок Википедии для тестирования моделей, LM, NER",
+    "purpose": "test LM, NER"
+  },
+  {
+    "name": "Rada_Trees",
+    "hf_id": "uacorpus/Rada_Trees",
+    "split": "train[:5000]",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Тексты украинской Рады, юридический стиль, хорошо очищены, LM и NER",
+    "purpose": "LM, NER"
+  },
+  {
+    "name": "COSMUS",
+    "hf_id": "YShynkarov/COSMUS",
+    "split": "train[:5000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Объединенный корпус текстов украинских СМИ и соцсетей, часть текста может содержать шум",
+    "purpose": "LM"
+  },
+  {
+    "name": "UA-News",
+    "source": "UA-datasets",
+    "split": "all",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Новости на украинском языке, проверенные тексты, LM, классификация",
+    "purpose": "LM, classification"
+  },
+  {
+    "name": "UA-SQuAD",
+    "source": "UA-datasets",
+    "split": "all",
+    "lang": "uk",
+    "clean": "high",
+    "info": "QA корпус на украинском, вопросы/ответы, ручная проверка",
+    "purpose": "QA"
+  },
+  {
+    "name": "CNC-UA",
+    "source": "news_corpus",
+    "split": "all",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Новости украинских СМИ 2019–2022, автоматическая разметка, LM, тематическое моделирование",
+    "purpose": "LM, topic modeling"
+  },
+  {
+    "name": "EmoBench-UA",
+    "source": "Ukrainian emotion dataset",
+    "split": "all",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Эмоционально аннотированные тексты украинского языка, для анализа эмоций и классификации",
+    "purpose": "emotion analysis, classification"
+  },
+  {
+    "name": "GRAC",
+    "source": "General Regionally Annotated Corpus of Ukrainian",
+    "split": "all",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Обширный корпус, POS-теги, морфология, лемматизация, LM, лингвистический анализ",
+    "purpose": "LM, linguistic analysis"
+  },
+  {
+    "name": "NEREL",
+    "source": "Russian nested-NER / RE dataset",
+    "split": "all",
+    "lang": "ru",
+    "clean": "high",
+    "info": "NER и RE на русском, вложенные сущности, ручная и полуавтоматическая разметка",
+    "purpose": "NER, RE"
+  },
+  {
+    "name": "NEREL-BIO",
+    "source": "Russian biomedical NER",
+    "split": "all",
+    "lang": "ru",
+    "clean": "medium",
+    "info": "NER для биомедицинских текстов на русском, автоматическая разметка, возможно немного шума",
+    "purpose": "NER, biomedical"
+  },
+  {
+    "name": "mC4_uk_en",
+    "hf_id": "facebook/mC4",
+    "split": "train[:1%]",
+    "lang": ["uk", "en"],
+    "clean": "medium",
+    "info": "Многоязычный корпус, веб-тексты, автоматическая сборка, возможен шум",
+    "purpose": "LM multilingual"
+  }
+]
