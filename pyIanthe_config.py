@@ -10,7 +10,8 @@ HF_HOME=r"F:\Tmp\huggingface"
 HF_DATASETS_CACHE=r"F:\Tmp\huggingface\datasets"
 HF_METRICS_CACHE=r"F:\Tmp\huggingface\metrics"
 HF_CACHE_DIRNAME=r"F:\Tmp\huggingface\hub"
-HF_HUB_WARN_DISABLE = "TRUE"
+TF_CACHE_DIRNAME=r"F:\Tmp\huggingface\TF"
+HF_HUB_WARN_DISABLE = "ON"
 
 # --- КАТАЛОГИ ---
 BASE_DIR = os.path.dirname(__file__)

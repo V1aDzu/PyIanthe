@@ -1,11 +1,5 @@
 import os
-import re
-import json
-import time
-import shutil
-from transformers import AutoTokenizer
 import pyIanthe_config
-
 # ---------------------------
 # Настройки окружения HF
 # ---------------------------
@@ -13,7 +7,24 @@ os.environ["HF_HOME"] = pyIanthe_config.HF_HOME
 os.environ["HF_DATASETS_CACHE"] = pyIanthe_config.HF_DATASETS_CACHE
 os.environ["HF_METRICS_CACHE"] = pyIanthe_config.HF_METRICS_CACHE
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = pyIanthe_config.HF_HUB_WARN_DISABLE
+os.environ["TRANSFORMERS_CACHE"] = pyIanthe_config.TF_CACHE_DIRNAME
+
+import re
+import json
+import time
+import shutil
+from transformers import AutoTokenizer
 from datasets import load_dataset, load_from_disk, concatenate_datasets, load_dataset_builder
+
+# Перевірка (можна прибрати після налаштування)
+print("="*60)
+print("ПЕРЕВІРКА ЗМІННИХ СЕРЕДОВИЩА:")
+print(f"HF_HOME: {os.environ.get('HF_HOME', '❌ НЕ ВСТАНОВЛЕНО!')}")
+print(f"HF_DATASETS_CACHE: {os.environ.get('HF_DATASETS_CACHE', '❌ НЕ ВСТАНОВЛЕНО!')}")
+print(f"TRANSFORMERS_CACHE: {os.environ.get('TRANSFORMERS_CACHE', '❌ НЕ ВСТАНОВЛЕНО!')}")
+print(f"HF_HUB_DISABLE_SYMLINKS_WARNING: {os.environ.get('HF_HUB_DISABLE_SYMLINKS_WARNING', '❌ НЕ ВСТАНОВЛЕНО!')}")
+print("="*60)
+
 # ---------------------------
 # Каталоги
 # ---------------------------
