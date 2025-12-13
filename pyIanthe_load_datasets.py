@@ -13,8 +13,14 @@ import re
 import json
 import time
 import shutil
+from itertools import islice
 from transformers import AutoTokenizer
+from datasets import Dataset, Features, Value
 from datasets import load_dataset, load_from_disk, concatenate_datasets, load_dataset_builder
+
+TARGET_FEATURES = Features({
+    "text": Value("string")
+})
 
 # Перевірка (можна прибрати після налаштування)
 print("="*60)
@@ -33,6 +39,17 @@ os.makedirs(pyIanthe_config.FOLDER_TRAIN_DATASET, exist_ok=True)
 os.makedirs(getattr(pyIanthe_config, "FOLDER_EVAL_DATASET", "dataset/eval"), exist_ok=True)
 
 SEED = 42  # фиксированный seed для shuffle
+
+def normalize_dataset(ds):
+    # 1. если есть поле text — оставляем только его
+    if "text" in ds.features:
+        ds = ds.remove_columns([c for c in ds.column_names if c != "text"])
+    else:
+        raise ValueError("Dataset does not contain 'text' column")
+
+    # 2. приводим features
+    ds = ds.cast(TARGET_FEATURES)
+    return ds
 
 # ---------------------------
 # Утилита: получить имя сплита
@@ -91,7 +108,7 @@ for info in dataset_info:
                     hf_total = builder.info.splits[split_name].num_examples
                     print(f"[INFO] Доступно записів у спліті: '{split_name}' всього на HF: {hf_total}")
                     print(f"[INFO] Опис датасету: {info.get('info', 'Немає опису')}")
-                    print(f"[INFO] Якість тексту: {info.get('clean', 'невідома')}")
+                    print(f"[INFO] Якість тексту: {info.get('clean', 'невідома')} Мова: {info.get('lang', 'різні')}")
             except Exception:
                 print(f"[WARNING] Не вдалося визначити максимальну кількість записів на HF")
 
@@ -99,7 +116,14 @@ for info in dataset_info:
         action = input(f"{prompt_msg}: ").strip().lower()
 
         if action == "k":
-            loaded_datasets.append({"dataset": ds, "local": True})
+            loaded_datasets.append({
+                    "dataset": ds,
+                    "local": True,
+                    "name": dataset_name,
+                    "lang": info.get("lang", "різні"),
+                    "quality": info.get("clean", "невідомо"),
+                    "count": len(ds)
+                })
             print(f"[INFO] Пропускаємо {dataset_name}")
             continue
 
@@ -141,7 +165,7 @@ for info in dataset_info:
                 hf_total = builder.info.splits[split_name].num_examples
                 print(f"[INFO] Доступно записів у спліті: '{split_name}' всього на HF: {hf_total}")
                 print(f"[INFO] Опис датасету: {info.get('info', 'Немає опису')}")
-                print(f"[INFO] Якість тексту: {info.get('clean', 'невідома')}")
+                print(f"[INFO] Якість тексту: {info.get('clean', 'невідома')} Мова: {info.get('lang', 'різні')}")
         except Exception:
             print(f"[WARNING] Не вдалося визначити максимальну кількість записів на HF")
 
@@ -152,36 +176,60 @@ for info in dataset_info:
             print(f"[INFO] Пропускаємо {dataset_name}")
             continue
 
-    # --- Ввод количества записей ---
-    n = hf_total
-    if hf_total:
-        n_str = input(f"[PROMPT] Введіть бажану кількість записів (максимум {hf_total}): ").strip()
+    # --- Ввод количества записей (ОБЯЗАТЕЛЬНЫЙ) ---
+    while True:
+        n_str = input("[PROMPT] Введіть кількість записів для завантаження: ").strip()
         try:
             n = int(n_str)
-            if n <= 0:
-                print("[INFO] Пропускаємо завантаження через некоректне число")
-                continue
-            if n > hf_total:
-                n = hf_total
-                print(f"[WARNING] Вказано більше, ніж доступно. Завантажено максимум: {n}")
+            if n > 0:
+                break
         except ValueError:
-            print("[INFO] Пропускаємо завантаження через некоректне число")
+            pass
+        print("[ERROR] Потрібно ввести додатне ціле число")
+
+    # --- Скачивание нового датасета (STREAMING ONLY) ---
+    try:
+        print("[INFO] Використовується streaming-режим")
+
+        ds_stream = load_dataset(
+            info["hf_id"],
+            info.get("config"),
+            split=split_name,
+            streaming=True
+        )
+
+        # Проверяем, что датасет реально читается
+        iterator = iter(ds_stream)
+        try:
+            first = next(iterator)
+        except StopIteration:
+            print("[ERROR] Датасет існує, але split порожній")
             continue
 
-    # --- Скачивание нового датасета ---
-    try:
-        split_arg = f"{split_name}[:{n}]" if n else split_name
-        
-        # Поддержка config
-        config = info.get("config", None)
-        if config:
-            ds = load_dataset(info["hf_id"], config, split=split_arg)
-        else:
-            ds = load_dataset(info["hf_id"], split=split_arg)
+        # Берем n записей
+        ds = Dataset.from_list(list(islice(ds_stream, n)))
+
+        # Фильтруем испорченные/пустые строки
+        ds = ds.filter(lambda x: x.get("text") is not None and x["text"].strip() != "")
+
+        try:
+            ds = normalize_dataset(ds)
+        except Exception as e:
+            print(f"[ERROR] Датасет {dataset_name} несумісний для LLM: {e}")
+            continue
 
         ds.save_to_disk(local_path)
-        print(f"[INFO] Датасет {dataset_name} завантажено локально, записів: {len(ds)}")
-        loaded_datasets.append({"dataset": ds, "local": True})
+        print(f"[INFO] Датасет {dataset_name} завантажено (streaming), записів: {len(ds)}")
+
+        loaded_datasets.append({
+            "dataset": ds,
+            "local": True,
+            "name": dataset_name,
+            "lang": info.get("lang", "різні"),
+            "quality": info.get("clean", "невідомо"),
+            "count": len(ds)
+        })        
+
     except Exception as e:
         print(f"[ERROR] Не вдалося скачати {dataset_name}: {e}")
         continue
@@ -193,7 +241,46 @@ if not loaded_datasets:
     print("[WARNING] Жоден датасет не було завантажено або знайдено локально. Завершення роботи.")
     raise SystemExit(1)
 
-combined_dataset = concatenate_datasets([d["dataset"] for d in loaded_datasets])
+print(f"[INFO] Готово до об'єднання датасетів: {len(loaded_datasets)}")
+for i, d in enumerate(loaded_datasets):
+    try:
+        loaded_datasets[i]["dataset"] = normalize_dataset(d["dataset"])
+    except Exception as e:
+        print(f"[WARNING] Не вдалося нормалізувати датасет {i}: {e}")
+
+# Заголовок таблицы
+print(f"{'[INFO]  № ':<3}| {'Name':<25} | {'Lang':<10} | {'Quality':<10} | {'Count':>7} |наявність|")
+print("-" * 86)
+
+# Вывод всех датасетов
+for i, d in enumerate(loaded_datasets, start=1):
+    if "text" in d["dataset"].column_names:
+        name = d.get("name", "невідомо")
+        lang = d.get("lang", "різні")
+        quality = d.get("quality", "невідомо")
+        count = len(d["dataset"])
+        print(f"[INFO] {i:<3}| {name:<25} | {lang:<10} | {quality:<10} | {count:>7} |  доданe  |")
+    else:
+        name = d.get("name", "невідомо")
+        lang = d.get("lang", "невідомо")
+        quality = d.get("quality", "невідомо")
+        count = len(d["dataset"])
+        print(f"[WARN] {i:<3}| {name:<25} | {lang:<10} | {quality:<10} | {count:>7} |ігноровано|")
+
+# Суммарный размер
+total_combined = sum(len(d["dataset"]) for d in loaded_datasets if "text" in d["dataset"].column_names)
+print("-" * 86)
+print(f"{'TOTAL':<66} | {total_combined:>7}")
+
+datasets_to_concat = []
+for d in loaded_datasets:
+    if "text" in d["dataset"].column_names:
+        datasets_to_concat.append(d["dataset"])
+    else:
+        print(f"[WARNING] Пропускаємо датасет без text:  {d.get('name', 'невідомо')}")
+
+combined_dataset = concatenate_datasets(datasets_to_concat)
+combined_dataset = combined_dataset.filter(lambda x: x["text"] not in [None, ""])
 total_combined = len(combined_dataset)
 print(f"[INFO] Загальний розмір об'єднаного датасету: {total_combined} записів")
 
@@ -223,11 +310,8 @@ try:
     print(f"[INFO] Розмір словника: {tokenizer.vocab_size}")
 
     sample_count = min(5, len(train_dataset))
-    sample_texts = [
-        str(train_dataset[i]["text"])
-        for i in range(sample_count)
-        if train_dataset[i] is not None and "text" in train_dataset[i] and train_dataset[i]["text"]
-    ]
+    
+    sample_texts = [train_dataset[i]["text"] for i in range(sample_count)]    
 
     if sample_texts:
         tokenized_samples = tokenizer(sample_texts, truncation=True, padding=True)
@@ -250,7 +334,7 @@ for folder in os.listdir(pyIanthe_config.FOLDER_CORPUS):
     full_path = os.path.join(pyIanthe_config.FOLDER_CORPUS, folder)
     if "_TO_DELETE_" in folder and os.path.isdir(full_path):
         try:
-            shutil.rmtree(full_path)
+            shutil.rmtree(full_path, ignore_errors=True)
             print(f"[INFO] Видалено старий датасет: {full_path}")
         except Exception as e:
             print(f"[WARNING] Не вдалося видалити старий датасет: {full_path}, причина: {e}")

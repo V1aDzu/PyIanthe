@@ -1,4 +1,4 @@
-[  
+[
   {
     "name": "wikipedia_en",
     "hf_id": "wikimedia/wikipedia",
@@ -27,24 +27,8 @@
     "info": "Украинская Википедия"
   },
   {
-    "name": "openwebtext",
-    "hf_id": "Skylion007/openwebtext",
-    "split": "train",
-    "lang": "en",
-    "clean": "medium",
-    "info": "Reddit тексты"
-  },
-  {
-    "name": "bookcorpus",
-    "hf_id": "bookcorpus",
-    "split": "train",
-    "lang": "en",
-    "clean": "high",
-    "info": "Книги английские"
-  },
-  {
-    "name": "wikitext",
-    "hf_id": "wikitext",
+    "name": "wikitext_103",
+    "hf_id": "Salesforce/wikitext",
     "config": "wikitext-103-raw-v1",
     "split": "train",
     "lang": "en",
@@ -52,38 +36,68 @@
     "info": "WikiText-103"
   },
   {
-    "name": "mc4_ru",
-    "hf_id": "mc4",
+    "name": "fineweb_edu_en",
+    "hf_id": "HuggingFaceFW/fineweb-edu",
+    "config": "sample-10BT",
+    "split": "train",
+    "lang": "en",
+    "clean": "high",
+    "info": "Качественный английский веб-текст (educational)"
+  },
+  {
+    "name": "c4_en",
+    "hf_id": "allenai/c4",
+    "config": "en",
+    "split": "train",
+    "lang": "en",
+    "clean": "medium",
+    "info": "C4 английский корпус"
+  },
+  {
+    "name": "c4_ru",
+    "hf_id": "allenai/c4",
     "config": "ru",
     "split": "train",
     "lang": "ru",
     "clean": "medium",
-    "info": "Русский веб"
+    "info": "C4 русский корпус"
   },
   {
-    "name": "mc4_uk",
-    "hf_id": "mc4",
+    "name": "c4_uk",
+    "hf_id": "allenai/c4",
     "config": "uk",
     "split": "train",
     "lang": "uk",
     "clean": "medium",
-    "info": "Украинский веб"
+    "info": "C4 украинский корпус"
   },
   {
-    "name": "wiki_edits_ru",
-    "hf_id": "osyvokon/wiki-edits-ru",
-    "split": "train",
-    "lang": "ru",
-    "clean": "high",
-    "info": "Правки русской Wikipedia"
-  },
-  {
-    "name": "wiki_edits_uk",
-    "hf_id": "osyvokon/wiki-edits-uk",
+    "name": "culturax_uk",
+    "hf_id": "uonlp/CulturaX",
+    "config": "uk",
     "split": "train",
     "lang": "uk",
     "clean": "high",
-    "info": "Правки украинской Wikipedia"
+    "count": 30000,
+    "info": "Cleaned multilingual dataset"
+  },
+  {
+    "name": "oscar_ru",
+    "hf_id": "oscar-corpus/OSCAR-2301",
+    "config": "ru",
+    "split": "train",
+    "lang": "ru",
+    "clean": "medium",
+    "info": "OSCAR русский веб-корпус"
+  },
+  {
+    "name": "oscar_uk",
+    "hf_id": "oscar-corpus/OSCAR-2301",
+    "config": "uk",
+    "split": "train",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "OSCAR украинский веб-корпус"
   },
   {
     "name": "ukr_news",
@@ -92,5 +106,38 @@
     "lang": "uk",
     "clean": "medium",
     "info": "Украинские новости"
+  },
+  {
+    "name": "common_crawl_uk",
+    "hf_id": "Ukrainian-corpus/Ukrainian-CommonCrawl",
+    "split": "train",
+    "lang": "uk",
+    "clean": "low",
+    "info": "Украинский CommonCrawl"
+  },
+  {
+    "name": "ru_books",
+    "hf_id": "d0rj/ru-books",
+    "split": "train",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Русские книги"
+  },
+  {
+    "name": "redpajama_v2_en",
+    "hf_id": "togethercomputer/RedPajama-Data-V2",
+    "config": "sample",
+    "split": "train",
+    "lang": "en",
+    "clean": "high",
+    "info": "RedPajama v2 English (дуже великий!)"
+  },
+  {
+    "name": "pile_uncopyrighted",
+    "hf_id": "monology/pile-uncopyrighted",
+    "split": "train",
+    "lang": "en",
+    "clean": "high",
+    "info": "The Pile без авторських прав"
   }
 ]
