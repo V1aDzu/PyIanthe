@@ -38,7 +38,7 @@ EPOCHS = 3                  #Епохи для основного етапу
 LEARNING_RATE = 5e-4        # LR для основного етапу
 CONTEXT_LENGTH = 512
 WEIGHT_DECAY = 0.01
-SAVE_STEPS = 500
+SAVE_STEPS = 2500
 SAVE_LIMIT = 3
 
 # --- НАЛАШТУВАННЯ GPU ТА ПРИСКОРЕННЯ ---    
@@ -48,6 +48,9 @@ WIN_WORKERS = True
 PIN_MEMORY = True           # прискорення на GPU
 BF16 = True                 # Ampere/Ada GPU
 FP16 = False                # половинна точність на GPU
+ATTENTION_TYPE = "eager"    # "eager"  - звичайний, без
+                            #  "sdpa"   - флеш аттеншен,
+                            #  "flash_attention_2" - флеш аттеншен 2, потрібні налаштування
 GRADIENT_CHECKPOINTING = True
 GRADIENT_ACCUMULATION_STEPS = 2  # Кількість кроків для акумуляції градієнтів
 # Ефективний батч = PER_DEVICE_BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS * num_gpus
@@ -57,11 +60,11 @@ GRADIENT_ACCUMULATION_STEPS = 2  # Кількість кроків для аку
 #   PER_DEVICE_BATCH_SIZE=4, GRADIENT_ACCUMULATION_STEPS=2  → Ефективний батч = 8
 
 # --- НАЛАШТУВАННЯ ТЕСТУВАННЯ ---
-TEST_ENABLED = False     # Тести генерації тексту
-EVAL_ENABLED = False     # Тести на eval датасеті
-EVAL_STEPS = 110         # Кожні 500 кроків
-TEXT_TESTS_COUNT = 10    # 10 промптів
-EVAL_TESTS_COUNT = 10    # 10 примерів из eval
+TEST_ENABLED = True     # Тести генерації тексту
+EVAL_ENABLED = True     # Тести на eval датасеті
+EVAL_STEPS = 5001       # Кожні 500 кроків
+TEXT_TESTS_COUNT = 15   # 10 промптів
+EVAL_TESTS_COUNT = 9    # 10 примерів из eval
 
 # --- НАЛАШТУВАННЯ ПОРІВНЯННЯ ---
 EVAL_PERCENT = 5

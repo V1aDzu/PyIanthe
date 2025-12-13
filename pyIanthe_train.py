@@ -110,6 +110,10 @@ if __name__ == "__main__":
     pin_memory = pyIanthe_config.PIN_MEMORY if device == "cuda" else False
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
     
+    # Attention type
+    attn_impl = pyIanthe_config.ATTENTION_TYPE if device == "cuda" else "eager"
+    logger.info(f"Attention implementation: {attn_impl}")
+
     logger.info(f"Пристрій: {device}, GPU: {num_gpus}")
     if device == "cuda":
         logger.info(f"GPU знайдено: {torch.cuda.get_device_name(0)}")
@@ -207,8 +211,12 @@ if __name__ == "__main__":
     if checkpoint_has_model:
         logger.info(f"Знайдено чекпоінт з моделлю: {last_checkpoint}")
         logger.info("Завантажуємо модель з чекпоінта (навчання продовжиться)")
-        model = AutoModelForCausalLM.from_pretrained(last_checkpoint, ignore_mismatched_sizes=False,
-                                                     local_files_only=True).to(device)
+        model = AutoModelForCausalLM.from_pretrained(
+                last_checkpoint,
+                ignore_mismatched_sizes=False,
+                local_files_only=True,
+                attn_implementation=attn_impl  # аттеншен
+            ).to(device)
         if hasattr(model, 'tie_weights'):
             model.tie_weights()
             logger.info("✓ Прив'язані ваги lm_head оновлено")
@@ -217,8 +225,12 @@ if __name__ == "__main__":
     elif main_model_exists:
         logger.info(f"Чекпоінта немає, але знайдено модель у: {MAIN_MODEL_DIR}")
         logger.info("Завантажуємо модель (optimizer почнеться з нуля)")
-        model = AutoModelForCausalLM.from_pretrained(MAIN_MODEL_DIR, ignore_mismatched_sizes=False,
-                                                     local_files_only=True).to(device)
+        model = AutoModelForCausalLM.from_pretrained(
+                MAIN_MODEL_DIR,
+                ignore_mismatched_sizes=False,
+                local_files_only=True,
+                attn_implementation=attn_impl  # аттеншен
+            ).to(device)
         if hasattr(model, 'tie_weights'):
             model.tie_weights()
             logger.info("✓ Прив'язані ваги lm_head оновлено")
@@ -239,7 +251,10 @@ if __name__ == "__main__":
             tie_word_embeddings=True,
             loss_type=None,
         )
-        model = AutoModelForCausalLM.from_config(config).to(device)
+        model = AutoModelForCausalLM.from_config(
+                config,
+                attn_implementation=attn_impl  # аттеншен
+            ).to(device)
         resume_from = None
 
     logger.info(f"Модель завантажена, параметрів: {model.num_parameters():,}")
