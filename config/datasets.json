@@ -139,5 +139,15 @@
     "lang": "en",
     "clean": "high",
     "info": "The Pile без авторських прав"
+  },
+  {
+    "name": "xnli_multi",
+    "hf_id": "xnli",
+    "config": "all_languages",
+    "split": "train",
+    "lang": "multi",
+    "clean": "high",
+    "count": 20000,
+    "info": "Багатомовний NLI"
   }
 ]

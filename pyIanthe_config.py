@@ -30,7 +30,7 @@ TEXT_TEST_FILENAME = "config/texttest.json"
 TRAINING_LOG_FILENAME = "training.log"
 
 # --- АРХІТЕКТУРА ---
-EMBEDDING_DIM = 894
+EMBEDDING_DIM = 896
 NUM_LAYERS = 10
 HEADS = 14
 
