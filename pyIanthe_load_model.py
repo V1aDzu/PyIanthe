@@ -1,6 +1,11 @@
 import os
-from huggingface_hub import snapshot_download
 import pyIanthe_config
+
+os.environ["HF_HOME"] = pyIanthe_config.HF_HOME
+os.environ["HF_DATASETS_CACHE"] = pyIanthe_config.HF_DATASETS_CACHE
+os.environ["HF_METRICS_CACHE"] = pyIanthe_config.HF_METRICS_CACHE
+
+from huggingface_hub import snapshot_download
 
 # Визначаємо директорію моделі
 author, model_name = pyIanthe_config.MODEL_ID.split("/")
@@ -14,7 +19,8 @@ if not os.path.exists(os.path.join(model_dir, "config.json")):
     print("Завантажуємо модель на диск...")
     snapshot_download(
         repo_id=pyIanthe_config.MODEL_ID,
-        cache_dir=model_dir,  # використовується для кешування
+        #cache_dir=model_dir,
+        cache_dir=pyIanthe_config.HF_CACHE_DIRNAME,  # використовується для кешування
         local_dir=model_dir
     )
     print("Завантаження завершено.")

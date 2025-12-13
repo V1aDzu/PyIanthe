@@ -5,6 +5,13 @@ import os
 DEBUG = True               # True = показувати всі warnings, False = приховати
 MONITOR_INTERVAL = 2
 
+# --- HuggingFace CACHE ---
+HF_HOME=r"F:\Tmp\huggingface"
+HF_DATASETS_CACHE=r"F:\Tmp\huggingface\datasets"
+HF_METRICS_CACHE=r"F:\Tmp\huggingface\metrics"
+HF_CACHE_DIRNAME=r"F:\Tmp\huggingface\hub"
+HF_HUB_WARN_DISABLE = "TRUE"
+
 # --- КАТАЛОГИ ---
 BASE_DIR = os.path.dirname(__file__)
 FOLDER_MODELS = os.path.join(BASE_DIR, "models")
