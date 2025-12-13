@@ -69,8 +69,13 @@ for info in dataset_info:
 
         # Проверка доступного количества на HF
         if "hf_id" in info and info["hf_id"]:
-            try:
-                builder = load_dataset_builder(info["hf_id"])
+            try:                
+                config = info.get("config", None)
+                if config:
+                    builder = load_dataset_builder(info["hf_id"], config)
+                else:
+                    builder = load_dataset_builder(info["hf_id"])
+
                 if split_name in builder.info.splits:
                     hf_total = builder.info.splits[split_name].num_examples
                     print(f"[INFO] Доступно записів у спліті: '{split_name}' всього на HF: {hf_total}")
@@ -114,7 +119,13 @@ for info in dataset_info:
 
         # Узнаем количество на HF
         try:
-            builder = load_dataset_builder(info["hf_id"])
+            # Поддержка config
+            config = info.get("config", None)
+            if config:
+                builder = load_dataset_builder(info["hf_id"], config)
+            else:
+                builder = load_dataset_builder(info["hf_id"])
+            
             if split_name in builder.info.splits:
                 hf_total = builder.info.splits[split_name].num_examples
                 print(f"[INFO] Доступно записів у спліті: '{split_name}' всього на HF: {hf_total}")
@@ -149,7 +160,14 @@ for info in dataset_info:
     # --- Скачивание нового датасета ---
     try:
         split_arg = f"{split_name}[:{n}]" if n else split_name
-        ds = load_dataset(info["hf_id"], split=split_arg)
+        
+        # Поддержка config
+        config = info.get("config", None)
+        if config:
+            ds = load_dataset(info["hf_id"], config, split=split_arg)
+        else:
+            ds = load_dataset(info["hf_id"], split=split_arg)
+
         ds.save_to_disk(local_path)
         print(f"[INFO] Датасет {dataset_name} завантажено локально, записів: {len(ds)}")
         loaded_datasets.append({"dataset": ds, "local": True})
