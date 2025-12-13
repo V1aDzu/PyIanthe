@@ -1,0 +1,191 @@
+[  
+  {
+    "name": "wikipedia_en",
+    "hf_id": "wiki_wikidata/wikipedia_en",
+    "split": "train[:80000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Английская Википедия",
+    "purpose": "LM, QA"
+  },
+  {
+    "name": "wikipedia_ru",
+    "hf_id": "danasone/wikipedia_ru",
+    "split": "train[:50000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Википедия на русском языке, проверенный текст, подходит для LM, QA, NER",
+    "purpose": "LM, QA, NER"
+  },
+  {
+    "name": "wikipedia_uk",
+    "hf_id": "wiki_wikidata/wikipedia_uk",
+    "split": "train[:50000]",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Стандартный корпус Википедии на украинском",
+    "purpose": "LM, QA"
+  },
+  {
+    "name": "wikipedia_uk",
+    "hf_id": "wiki_wikidata/wikipedia_uk",
+    "split": "train[:80000]",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Украинская Википедия",
+    "purpose": "LM, QA"
+  },
+  {
+    "name": "ag_news",
+    "hf_id": "ag_news/ag_news",
+    "split": "train",
+    "lang": "en",
+    "clean": "high",
+    "info": "Классификация новостей (англ.)",
+    "purpose": "classification"
+  },
+  {
+    "name": "oscar_en",
+    "hf_id": "oscar-corpus/oscar-en",
+    "split": "train[:100000]",
+    "lang": "en",
+    "clean": "medium",
+    "info": "Крупный корпус текстов английского языка из Common Crawl",
+    "purpose": "LM"
+  },
+  {
+    "name": "oscar_ru",
+    "hf_id": "oscar-corpus/OSCAR-2201",
+    "split": "train[:100000]",
+    "lang": "ru",
+    "clean": "medium",
+    "info": "Крупный корпус с Common Crawl для русского языка",
+    "purpose": "LM"
+  },
+  {
+    "name": "oscar_uk",
+    "hf_id": "oscar-corpus/OSCAR-2201",
+    "split": "train[:100000]",
+    "lang": "uk",
+    "clean": "medium",
+    "info": "Крупный корпус с Common Crawl для украинского языка",
+    "purpose": "LM"
+  },  
+  {
+    "name": "gbw_en",
+    "hf_id": "gbw/gutenberg_bookscorpus_wikipedia_en",
+    "split": "train[:50000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Сочетание Gutenberg + BookCorpus + English Wikipedia",
+    "purpose": "LM"
+  },
+  {
+    "name": "wikiomnia_ru",
+    "hf_id": "wikiomnia/ru_qa",
+    "split": "train[:10000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "QA-пары на основе русской Википедии",
+    "purpose": "QA, LM"
+  },
+  {
+    "name": "razmecheno",
+    "hf_id": "razmecheno/ner",
+    "split": "train[:10000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Небольшой аннотированный корпус NER из дневников (русский)",
+    "purpose": "NER"
+  },
+  {
+    "name": "wiki-edits-uk",
+    "hf_id": "osyvokon/wiki-edits-uk",
+    "split": "full/train",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Изменения предложений из истории украинской Википедии",
+    "purpose": "GEC, Spell‑check"
+  },
+  {
+    "name": "wiki_edits_ru",
+    "hf_id": "osyvokon/wiki-edits-ru",
+    "split": "full/train",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Изменения предложений из русской Википедии",
+    "purpose": "GEC/Spell‑check"
+  },
+  {
+    "name": "gbw_ru",
+    "hf_id": "gbw/gutenberg_bookscorpus_wikipedia_ru",
+    "split": "train[:50000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Сочетание Gutenberg + BookCorpus + Russian Wikipedia",
+    "purpose": "LM"
+  },
+  {
+    "name": "wiki_text_ru",
+    "hf_id": "wiki_text/wikitext-103-raw-v1",
+    "split": "train[:50000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Wikitext‑103 Raw (англ.) — полезен для языкового моделирования",
+    "purpose": "LM"
+  },
+  {
+    "name": "ukr_detect_formality",
+    "hf_id": "ukr-detect/ukr-formality-dataset-translated-gyafc",
+    "split": "train[:10000]",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Переведённый датасет формальности (uk)",
+    "purpose": "style, classification"
+  },
+  {
+    "name": "bnc_conversational_en",
+    "hf_id": "bnc_conversational/bnc_conversational",
+    "split": "train[:20000]",
+    "lang": "en",
+    "clean": "high",
+    "info": "Корпус живой речи BNC (англ.)",
+    "purpose": "chat‑style LM"
+  },
+  {
+    "name": "tatoeba",
+    "hf_id": "tatoeba/tatoeba",
+    "split": "train[:10000]",
+    "lang": "multi",
+    "clean": "high",
+    "info": "Параллельные предложения на более чем 400 языках, включая англ, рус, укр",
+    "purpose": "MT, LM"
+  },
+  {
+    "name": "translated_nli_ru",
+    "hf_id": "ukr-detect/ukr-nli-translated", 
+    "split": "train[:10000]",
+    "lang": "ru",
+    "clean": "high",
+    "info": "Переведённый NLI датасет (русский)",
+    "purpose": "classification"
+  },
+  {
+    "name": "translated_nli_uk",
+    "hf_id": "ukr-detect/ukr-nli-translated",
+    "split": "train[:10000]",
+    "lang": "uk",
+    "clean": "high",
+    "info": "Параллельные ресурсы для NLI на украинском",
+    "purpose": "NLI, LM"
+  },
+  {
+    "name": "multilingual_translation_instruct",
+    "hf_id": "multilingual/translation_instruct",
+    "split": "train[:10000]",
+    "lang": "multi",
+    "clean": "high",
+    "info": "Мультиязычный корпус инструкций, включая русский и английский переводы",
+    "purpose": "LM, Instruction"
+  }
+]
