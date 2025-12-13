@@ -5,6 +5,7 @@ import json
 import torch
 import shutil
 import logging
+import platform
 from datetime import datetime
 from transformers import (
     AutoTokenizer,
@@ -69,6 +70,37 @@ def setup_logging():
 logger = setup_logging()
 # ================================================================
 
+# ==================== ВИЗНАЧЕННЯ NUM_WORKERS ====================
+def get_num_workers():
+    """
+    Визначає фактичну кількість воркерів залежно від платформи та налаштувань
+    
+    Логіка:
+    - Linux/Mac → завжди використовувати NUM_WORKERS з конфігу
+    - Windows + WIN_WORKERS=True → використовувати NUM_WORKERS з конфігу
+    - Windows + WIN_WORKERS=False → примусово 0 (безпечний режим)
+    """
+    system = platform.system()
+    config_workers = pyIanthe_config.NUM_WORKERS
+    
+    if system == "Windows":
+        if pyIanthe_config.WIN_WORKERS:
+            logger.info(f"[NUM_WORKERS] Windows виявлено, WIN_WORKERS=True")
+            logger.info(f"[NUM_WORKERS] Використовується NUM_WORKERS={config_workers}")
+            logger.warning(f"[NUM_WORKERS] ⚠ Експериментальний режим! Можливі проблеми зі стабільністю")
+            return config_workers
+        else:
+            logger.info(f"[NUM_WORKERS] Windows виявлено, WIN_WORKERS=False")
+            logger.info(f"[NUM_WORKERS] Примусово встановлено NUM_WORKERS=0 (безпечний режим)")
+            if config_workers > 0:
+                logger.info(f"[NUM_WORKERS] NUM_WORKERS={config_workers} з конфігу проігноровано")
+            return 0
+    else:
+        logger.info(f"[NUM_WORKERS] {system} виявлено")
+        logger.info(f"[NUM_WORKERS] Використовується NUM_WORKERS={config_workers}")
+        return config_workers
+# ================================================================
+
 if __name__ == "__main__":
 
     # 0. GPU та налаштування
@@ -82,6 +114,9 @@ if __name__ == "__main__":
         logger.info(f"GPU знайдено: {torch.cuda.get_device_name(0)}")
     else:
         logger.info("Тренування буде на CPU")
+
+    # Визначаємо фактичну кількість воркерів
+    actual_num_workers = get_num_workers()
 
     # 1. Папки
     CHECKPOINT_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_CHECKPOINTS)
@@ -438,11 +473,25 @@ if __name__ == "__main__":
             logger.info(f"{'='*60}\n")
 
     # 9. TrainingArguments і Trainer
+    
+    # Розрахунок ефективного розміру батчу
+    effective_batch_size = (PER_DEVICE_BATCH_SIZE * 
+                           pyIanthe_config.GRADIENT_ACCUMULATION_STEPS * 
+                           max(1, num_gpus))
+    
+    logger.info(f"\n[BATCH CONFIG]")
+    logger.info(f"  Per-device batch size: {PER_DEVICE_BATCH_SIZE}")
+    logger.info(f"  Gradient accumulation steps: {pyIanthe_config.GRADIENT_ACCUMULATION_STEPS}")
+    logger.info(f"  Number of GPUs: {max(1, num_gpus)}")
+    logger.info(f"  Num workers: {actual_num_workers}")
+    logger.info(f"  → Effective batch size: {effective_batch_size}")
+    
     training_args = TrainingArguments(
         output_dir=CHECKPOINT_DIR,
         overwrite_output_dir=False,
         num_train_epochs=1,
         per_device_train_batch_size=PER_DEVICE_BATCH_SIZE,
+        gradient_accumulation_steps=pyIanthe_config.GRADIENT_ACCUMULATION_STEPS,
         save_steps=SAVE_STEPS,
         save_total_limit=pyIanthe_config.SAVE_LIMIT,
         logging_steps=100,  # Частіше логувати для моніторингу
@@ -450,7 +499,7 @@ if __name__ == "__main__":
         weight_decay=pyIanthe_config.WEIGHT_DECAY,
         fp16=fp16,
         dataloader_pin_memory=pin_memory,
-        dataloader_num_workers=0,
+        dataloader_num_workers=actual_num_workers,
         report_to="none",
         disable_tqdm=False
     )

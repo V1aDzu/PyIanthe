@@ -35,17 +35,26 @@ SAVE_STEPS = 500
 SAVE_LIMIT = 3
 
 # --- НАЛАШТУВАННЯ GPU ТА ПРИСКОРЕННЯ ---    
-PER_DEVICE_BATCH_SIZE = 2   # зменшити якщо мало VRAM
-NUM_WORKERS = 2             # кількість потоків на CPU
+PER_DEVICE_BATCH_SIZE = 2   # базовий розмір батчу на GPU, зменшити якщо мало VRAM
+NUM_WORKERS = 4             # кількість потоків на CPU
+WIN_WORKERS = False
 PIN_MEMORY = True           # прискорення на GPU
 FP16 = True                 # половинна точність на GPU
+GRADIENT_ACCUMULATION_STEPS = 1  # Кількість кроків для акумуляції градієнтів
+# Ефективний батч = PER_DEVICE_BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS * num_gpus
+# Приклади:
+#   PER_DEVICE_BATCH_SIZE=2, GRADIENT_ACCUMULATION_STEPS=1  → Ефективний батч = 2
+#   PER_DEVICE_BATCH_SIZE=2, GRADIENT_ACCUMULATION_STEPS=4  → Ефективний батч = 8
+#   PER_DEVICE_BATCH_SIZE=4, GRADIENT_ACCUMULATION_STEPS=2  → Ефективний батч = 8
 
-# --- НАЛАШТУВАННЯ ПОРІВНЯННЯ ---
-TEST_ENABLED = True      # Тести генерації тексту
-EVAL_ENABLED = True      # Тести на eval датасеті
+# --- НАЛАШТУВАННЯ ТЕСТУВАННЯ ---
+TEST_ENABLED = False      # Тести генерації тексту
+EVAL_ENABLED = False      # Тести на eval датасеті
 EVAL_STEPS = 310         # Кожні 500 кроків
 TEXT_TESTS_COUNT = 10    # 10 промптів
 EVAL_TESTS_COUNT = 10    # 10 примерів из eval
+
+# --- НАЛАШТУВАННЯ ПОРІВНЯННЯ ---
 EVAL_PERCENT = 5
 
 #        Recommended eval sizes 
