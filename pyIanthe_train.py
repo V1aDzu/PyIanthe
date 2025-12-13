@@ -104,8 +104,9 @@ def get_num_workers():
 if __name__ == "__main__":
 
     # 0. GPU та налаштування
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() else "cpu"    
     fp16 = pyIanthe_config.FP16 if device == "cuda" else False
+    bf16 = pyIanthe_config.BF16 if device == "cuda" else False
     pin_memory = pyIanthe_config.PIN_MEMORY if device == "cuda" else False
     num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
     
@@ -253,6 +254,11 @@ if __name__ == "__main__":
             else:
                 logger.warning("⚠ lm_head.weight НЕ прив'язаний до wte")
 
+    # Gradient Checkpointing
+    if pyIanthe_config.GRADIENT_CHECKPOINTING:
+        model.gradient_checkpointing_enable()
+        logger.info("✓ Gradient checkpointing увімкнено")
+        logger.info("  → Можна збільшити batch size")
     # 6. Завантаження тестових прикладів
     def load_test_examples():
         """Завантажує тестові приклади з JSON файлу"""
@@ -506,6 +512,7 @@ if __name__ == "__main__":
         learning_rate=LEARNING_RATE,
         weight_decay=pyIanthe_config.WEIGHT_DECAY,
         fp16=fp16,
+        bf16=bf16,
         dataloader_pin_memory=pin_memory,
         dataloader_num_workers=actual_num_workers,
         report_to="none",

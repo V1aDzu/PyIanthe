@@ -42,12 +42,14 @@ SAVE_STEPS = 500
 SAVE_LIMIT = 3
 
 # --- НАЛАШТУВАННЯ GPU ТА ПРИСКОРЕННЯ ---    
-PER_DEVICE_BATCH_SIZE = 2   # базовий розмір батчу на GPU, зменшити якщо мало VRAM
+PER_DEVICE_BATCH_SIZE = 4   # базовий розмір батчу на GPU, зменшити якщо мало VRAM
 NUM_WORKERS = 4             # кількість потоків на CPU
-WIN_WORKERS = False
+WIN_WORKERS = True
 PIN_MEMORY = True           # прискорення на GPU
-FP16 = True                 # половинна точність на GPU
-GRADIENT_ACCUMULATION_STEPS = 1  # Кількість кроків для акумуляції градієнтів
+BF16 = True                 # Ampere/Ada GPU
+FP16 = False                # половинна точність на GPU
+GRADIENT_CHECKPOINTING = True
+GRADIENT_ACCUMULATION_STEPS = 2  # Кількість кроків для акумуляції градієнтів
 # Ефективний батч = PER_DEVICE_BATCH_SIZE * GRADIENT_ACCUMULATION_STEPS * num_gpus
 # Приклади:
 #   PER_DEVICE_BATCH_SIZE=2, GRADIENT_ACCUMULATION_STEPS=1  → Ефективний батч = 2
