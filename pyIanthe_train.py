@@ -18,7 +18,7 @@ from transformers import (
     TrainerCallback
 )
 from modules.pyIanthe_log import setup_logging, configure_runtime
-from modules.pyIanthe_hw import get_num_workers
+from modules.pyIanthe_hw import get_device_config, get_num_workers
 from modules.pyIanthe_utils import get_last_checkpoint, load_test_examples
 from modules.pyIanthe_dataset import load_datasets
 from modules.pyIanthe_metrics import test_text_generation, compute_perplexity, compute_text_metrics, test_eval_dataset
@@ -38,21 +38,7 @@ if __name__ == "__main__":
     )
 
     # 0. GPU та налаштування
-    device = "cuda" if torch.cuda.is_available() else "cpu"    
-    fp16 = pyIanthe_config.FP16 if device == "cuda" else False
-    bf16 = pyIanthe_config.BF16 if device == "cuda" else False
-    pin_memory = pyIanthe_config.PIN_MEMORY if device == "cuda" else False
-    num_gpus = torch.cuda.device_count() if torch.cuda.is_available() else 0
-    
-    # Attention type
-    attn_impl = pyIanthe_config.ATTENTION_TYPE if device == "cuda" else "eager"
-    logger.info(f"Attention implementation: {attn_impl}")
-
-    logger.info(f"Пристрій: {device}, GPU: {num_gpus}")
-    if device == "cuda":
-        logger.info(f"GPU знайдено: {torch.cuda.get_device_name(0)}")
-    else:
-        logger.info("Тренування буде на CPU")
+    device, fp16, bf16, pin_memory, num_gpus, attn_impl = get_device_config()    
 
     # Визначаємо фактичну кількість воркерів
     actual_num_workers = get_num_workers(
@@ -104,17 +90,6 @@ if __name__ == "__main__":
     tokenized_dataset = dataset.map(lambda ex: tokenizer(ex["text"], truncation=True, max_length=CONTEXT_LENGTH),
                                     batched=True, remove_columns=["text"])
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-
-
-
-
-
-
-
-
-
-
-
 
     # 5. Завантаження моделі
     vocab_size = len(tokenizer)
