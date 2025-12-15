@@ -7,6 +7,8 @@ import shutil
 import numpy as np
 import random
 
+import hashlib
+
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
@@ -23,8 +25,93 @@ from modules.pyIanthe_metrics import compute_perplexity, compute_text_metrics
 from modules.pyIanthe_test_callbacks import TestingCallback
 import pyIanthe_config
 
+from transformers.trainer_callback import TrainerState
+
+
 if __name__ == "__main__":
     # 0. Включаємо Debug повідомлення та ведення логів
+
+
+
+    def save_all_rng_states(filename):
+        """Сохраняет состояния RNG всех необходимых библиотек в один файл."""
+        
+        # Собираем все состояния в словарь
+        full_state = {
+            'python_rng_state': random.getstate(),        # Стандартный 'random'
+            'numpy_rng_state': np.random.get_state(),      # NumPy
+            'torch_cpu_rng_state': torch.get_rng_state(),  # PyTorch CPU (для DataLoader)
+            # PyTorch CUDA (для весов, Dropout и т.д.)
+            'torch_cuda_rng_states': torch.cuda.get_rng_state_all(), 
+        }
+        
+        # Сохраняем словарь
+        torch.save(full_state, filename)
+        print(f"✅ Полные состояния RNG сохранены в {filename}")
+
+    def load_all_rng_states(filename):
+        """Загружает и восстанавливает состояния RNG из файла."""
+        if not os.path.exists(filename):
+            print(f"❌ Ошибка: Файл состояний {filename} не найден.")
+            return
+            
+        full_state = torch.load(filename, weights_only=False)
+        
+        # 1. Восстанавливаем Python random
+        random.setstate(full_state['python_rng_state'])
+        
+        # 2. Восстанавливаем NumPy
+        np.random.set_state(full_state['numpy_rng_state'])
+        
+        # 3. Восстанавливаем PyTorch CPU
+        torch.set_rng_state(full_state['torch_cpu_rng_state'])
+        
+        # 4. Восстанавливаем PyTorch CUDA (самое важное для LLM)
+        torch.cuda.set_rng_state_all(full_state['torch_cuda_rng_states'])
+        
+        print(f"✅ Полные состояния RNG успешно восстановлены из {filename}")
+
+
+    #def save_rng_to_file(filename="cuda_rng_state.pt"):
+     #   # Получаем список тензоров состояний для всех GPU
+     #   rng_states0 = random.getstate()
+     #   rng_states1 = np.random.get_state()
+     #   rng_states2 = torch.cuda.get_rng_state_all()
+        # Сохраняем как обычный объект PyTorch
+      ##  torch.save(rng_states0, "cuda0_rng.pt")
+       # torch.save(rng_states1, "cuda1_rng.pt")
+       ## torch.save(rng_states2, "cuda2_rng.pt")
+        #print(f"RNG состояния всех GPU сохранены в файл: {filename}")
+
+##    "python": random.getstate(),
+             #   "numpy": np.random.get_state(),
+             #   "cpu": torch.random.get_rng_state(),
+
+
+
+
+
+
+
+#    def load_rng_from_file(filename="cuda_rng_state.pt"):
+ #       try:
+  #          rng_states0 = torch.load("cuda0_rng.pt")
+   #         rng_states1 = torch.load("cuda1_rng.pt")
+    #        rng_states2 = torch.load("cuda2_rng.pt")
+     #       random.set_rng_state_all(rng_states0)
+      #      torch.get_rng_state(), random.getstate() и numpy.random.get_state().
+       #     torch.cuda.set_rng_state_all(rng_states1)
+        #    torch.cuda.set_rng_state_all(rng_states2)
+
+       # rng_states0 = random.getstate()
+        #rng_states1 = np.random.get_state()
+        #rng_states2 = torch.cuda.get_rng_state_all()
+        # Сохраняем как обычный объект PyTorch
+       # torch.save(rng_states0, "cuda0_rng.pt")
+       # torch.save(rng_states1, "cuda1_rng.pt")
+       # torch.save(rng_states2, "cuda2_rng.pt")
+
+
 
     configure_runtime(pyIanthe_config.DEBUG)
     
@@ -41,6 +128,10 @@ if __name__ == "__main__":
         config=pyIanthe_config,
         logger=logger       
     )    
+
+
+
+
 
     # Визначаємо фактичну кількість воркерів
     actual_num_workers = get_num_workers(
@@ -208,32 +299,124 @@ if __name__ == "__main__":
         emerg_scaler_state_path = os.path.join(resume_from, "scaler.pt")
 
         # Восстановление состояния RNG
-        if os.path.exists(emerg_rng_state_path):
-            with torch.serialization.safe_globals([np.core.multiarray._reconstruct, np.ndarray]):
-                rng_states = torch.load(emerg_rng_state_path, weights_only=False)
-                random.setstate(rng_states["python"])
-                np.random.set_state(rng_states["numpy"])
-                torch.random.set_rng_states(rng_state["cpu"])
-                if "cuda" in rng_state and torch.cuda.is_available():
-                    #torch.cuda.random.set_rng_state_all(rng_states["cuda"])
-                    cuda_states = rng_state.get("cuda", [])
-                    if cuda_states is not None and len(cuda_states) > 0:
-                        for i, state in enumerate(cuda_states):
-                            if i < num_gpus:
-                                try:
-                                    torch.cuda.set_rng_state(state, device=i)
-                                except RuntimeError as e:
-                                    print(f"GPU {i}: невозможно восстановить RNG ({e})")
-            logger.info("✓ RNG state відновлено з аварійного чекпоінта")
+        #if os.path.exists(emerg_rng_state_path):
+         #   with torch.serialization.safe_globals([np.core.multiarray._reconstruct, np.ndarray]):
 
-            if hasattr(model, 'lm_head') and hasattr(model, 'transformer'):
-                if hasattr(model.transformer, 'wte'):
-                    lm_head_ptr = model.lm_head.weight.data_ptr()
-                    wte_ptr = model.transformer.wte.weight.data_ptr()
-                    if lm_head_ptr == wte_ptr:
-                        logger.info("✓ lm_head.weight правильно прив'язаний до wte")
-                    else:
-                        logger.warning("⚠ lm_head.weight НЕ прив'язаний до wte")
+          #      rng_states = torch.load('rngstate.test')
+           #     torch.cuda.set_rng_state_all(rng_states)
+                # 2. Восстанавливаем и проверяем
+            #    load_rng_from_file("my_rng.pt")
+             #   print_rng_debug_info("ПОСЛЕ ЗАГРУЗКИ")
+
+
+    
+
+        load_all_rng_states("rngsave.txt")
+
+
+        emerg_tr_state_path = os.path.join(resume_from, "trainer_state.json")
+        emerg_opt_state_path = os.path.join(resume_from, "optimizer.pt")
+        emerg_sched_state_path = os.path.join(resume_from, "scheduler.pt")
+        emerg_rng_state_path = os.path.join(resume_from, "rng_state.pth")
+        emerg_scaler_state_path = os.path.join(resume_from, "scaler.pt")
+
+
+
+
+        #with open(emerg_rng_state_path, "r") as f:
+        #    state_dict = json.load(f)
+            
+            # Створюємо об'єкт TrainerState з даних
+        #    loaded_state = TrainerState(**state_dict)
+            
+        #    trainer.state = loaded_state
+
+        full_state = torch.load(emerg_rng_state_path, weights_only=False) 
+        trainer.state = full_state
+# Далі йде load_all_rng_states, як ми робили
+
+    
+        if trainer.optimizer is not None and os.path.exists(emerg_opt_state_path):
+            try:
+                # Завантажуємо стан оптимізатора
+                optimizer_state = torch.load(emerg_opt_state_path)
+                trainer.optimizer.load_state_dict(optimizer_state)
+
+                print(f"✅ Optimizer state відновлено з {emerg_opt_state_path}")
+            except Exception as e:
+                print(f"❌ Помилка відновлення стану оптимізатора: {e}")
+
+    
+        if trainer.lr_scheduler is not None and os.path.exists(emerg_sched_state_path):
+            try:
+                # Завантажуємо стан планувальника
+                scheduler_state = torch.load(emerg_sched_state_path)
+                trainer.lr_scheduler.load_state_dict(scheduler_state)
+                print(f"✅ Scheduler state відновлено з {emerg_sched_state_path}")
+            except Exception as e:
+                print(f"❌ Помилка відновлення стану планувальника: {e}")
+
+# --- ВИКОНАННЯ ---
+# load_emergency_states(trainer, emerg_tr_state_path, emerg_opt_state_path, emerg_sched_state_path)
+
+# Після цього ви можете викликати trainer.train()
+
+
+
+
+
+
+
+
+
+
+
+
+
+              #  rng_states = torch.load(emerg_rng_state_path, weights_only=False)
+              #  random.setstate(rng_states["python"])
+              #  np.random.set_state(rng_states["numpy"])
+              #  torch.random.set_rng_state(rng_states["cpu"])
+              #  if "cuda" in rng_states and torch.cuda.is_available():
+                    #torch.cuda.random.set_rng_state_all(rng_states["cuda"])
+                    #cuda_states = rng_states.get("cuda", [])
+
+                
+
+              #      state_bytes = cuda_states.numpy().tobytes()
+              #      state_hash = hashlib.md5(state_bytes).hexdigest()
+            
+                    # Печатаем ID устройства, размер состояния и хеш
+               #     print(f"LOAD: Size={cuda_states.shape[0]} bytes | Hash={state_hash}")
+        
+
+
+                #    debug_cuda_rng_state(cuda_states, logger, prefix="[LOAD]")
+
+
+
+
+                    #if cuda_states is not None and len(cuda_states) > 0:
+                       # for i, state in enumerate(cuda_states):
+                            #if i < num_gpus:
+                             #   try:
+                              #      torch.cuda.set_rng_state(state, device=i)
+                              #  except RuntimeError as e:
+                               #     print(f"GPU {i}: невозможно восстановить RNG ({e})")
+
+              
+
+                               
+        logger.info("✓ RNG state відновлено з аварійного чекпоінта")
+
+        if hasattr(model, 'lm_head') and hasattr(model, 'transformer'):
+            if hasattr(model.transformer, 'wte'):
+                lm_head_ptr = model.lm_head.weight.data_ptr()
+                wte_ptr = model.transformer.wte.weight.data_ptr()
+                if lm_head_ptr == wte_ptr:
+                    logger.info("✓ lm_head.weight правильно прив'язаний до wte")
+                else:
+                    logger.warning("⚠ lm_head.weight НЕ прив'язаний до wte")
 
 
 
@@ -361,16 +544,46 @@ if __name__ == "__main__":
                 torch.save(trainer.optimizer.state_dict(), emerg_opt_state_path)
             if trainer.lr_scheduler is not None:
                 torch.save(trainer.lr_scheduler.state_dict(), emerg_sched_state_path)
-            rng_states = {
-                "python": random.getstate(),
-                "numpy": np.random.get_state(),
-                "cpu": torch.random.get_rng_state(),
-            }
-            if torch.cuda.is_available():
-                rng_states["cuda"] = torch.cuda.random.get_rng_state_all()
-            torch.save(rng_states, emerg_rng_state_pathrng_states)
-            if fp16 and hasattr(trainer, "scaler") and trainer.scaler is not None:
-                torch.save(trainer.scaler.state_dict(), emerg_scaler_state_path)            
+
+            save_all_rng_states("rngsave.txt")
+
+            #rng_states = {
+            ##    "python": random.getstate(),
+             #   "numpy": np.random.get_state(),
+             #   "cpu": torch.random.get_rng_state(),
+           # }
+
+            # ПРИМЕР ИСПОЛЬЗОВАНИЯ:
+            # 1. Замеряем до сохранения
+                #save_rng_to_file("my_rng.pt")
+
+
+
+
+        
+
+
+        #    if torch.cuda.is_available():
+
+         #       cuda_states = torch.cuda.get_rng_state_all()
+
+          #      state_bytes = cuda_states.numpy().tobytes()
+           #     state_hash = hashlib.md5(state_bytes).hexdigest()
+        
+                # Печатаем ID устройства, размер состояния и хеш
+            #    print(f"GPU: Size={cuda_states.shape[0]} bytes | Hash={state_hash}")
+    
+
+
+
+                #rng_states["cuda"] = torch.cuda.random.get_rng_state_all()
+
+                #debug_cuda_rng_state(rng_states, logger, prefix="[SAVE]")
+
+
+         #   torch.save(rng_states, emerg_rng_state_path)
+         #   if fp16 and hasattr(trainer, "scaler") and trainer.scaler is not None:
+         #       torch.save(trainer.scaler.state_dict(), emerg_scaler_state_path)            
 
             logger.info(f"✓ Аварійний чекпоінт: {emergency_checkpoint}")
             logger.info("Для продовження запустіть скрипт знову")
