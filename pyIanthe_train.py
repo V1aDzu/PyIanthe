@@ -4,7 +4,6 @@ import sys
 import json
 import torch
 import shutil
-import logging
 import platform
 from datetime import datetime
 from transformers import (
@@ -17,58 +16,8 @@ from transformers import (
     TrainerCallback
 )
 from datasets import load_from_disk
+from modules.pyIanthe_log import setup_logging, configure_runtime
 import pyIanthe_config
-
-# ==================== НАЛАШТУВАННЯ WARNINGS ====================
-if not pyIanthe_config.DEBUG:
-    import warnings
-    warnings.filterwarnings("ignore")
-    
-    import logging as std_logging
-    std_logging.getLogger("transformers").setLevel(std_logging.ERROR)
-    std_logging.getLogger("transformers.modeling_utils").setLevel(std_logging.ERROR)
-    std_logging.getLogger("transformers.configuration_utils").setLevel(std_logging.ERROR)
-    std_logging.getLogger("transformers.modeling_tf_utils").setLevel(std_logging.ERROR)
-    
-    from transformers import logging as transformers_logging
-    transformers_logging.set_verbosity_error()
-    
-    print("[INFO] DEBUG режим вимкнено, warnings приховані")
-else:
-    print("[INFO] DEBUG режим увімкнено, всі warnings показуються")
-# ================================================================
-
-# ==================== НАЛАШТУВАННЯ ЛОГУВАННЯ ====================
-def setup_logging():
-    """Налаштовує логування у файл та консоль"""
-    log_file = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.TRAINING_LOG_FILENAME)
-    
-    # Створюємо logger
-    logger = logging.getLogger('training')
-    logger.setLevel(logging.INFO)
-    
-    # Видаляємо старі handlers якщо є
-    logger.handlers.clear()
-    
-    # Handler для файлу
-    file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
-    file_handler.setLevel(logging.INFO)
-    file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    file_handler.setFormatter(file_formatter)
-    
-    # Handler для консолі
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_formatter = logging.Formatter('%(message)s')
-    console_handler.setFormatter(console_formatter)
-    
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
-
-logger = setup_logging()
-# ================================================================
 
 # ==================== ВИЗНАЧЕННЯ NUM_WORKERS ====================
 def get_num_workers():
@@ -102,6 +51,17 @@ def get_num_workers():
 # ================================================================
 
 if __name__ == "__main__":
+    # 0. Включаємо Debug повідомлення та ведення логів
+
+    configure_runtime(pyIanthe_config.DEBUG)
+    
+    logger = setup_logging(
+        log_to_file=pyIanthe_config.TRAINING_LOG_ENABLE,
+        log_file=os.path.join(
+            pyIanthe_config.BASE_DIR,
+            pyIanthe_config.TRAINING_LOG_FILENAME
+        )
+    )
 
     # 0. GPU та налаштування
     device = "cuda" if torch.cuda.is_available() else "cpu"    
