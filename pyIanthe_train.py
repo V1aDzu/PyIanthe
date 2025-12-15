@@ -18,6 +18,7 @@ from modules.pyIanthe_log import setup_logging, configure_runtime
 from modules.pyIanthe_hw import get_num_workers
 from modules.pyIanthe_utils import get_last_checkpoint, load_test_examples
 from modules.pyIanthe_dataset import load_datasets
+from modules.pyIanthe_metrics import test_text_generation, compute_perplexity, compute_text_metrics, test_eval_dataset
 import pyIanthe_config
 
 if __name__ == "__main__":
@@ -172,106 +173,6 @@ if __name__ == "__main__":
     )
 
     # 7. Функції тестування та метрик
-    def compute_perplexity(logits, labels):
-        """Обчислює perplexity"""
-        loss_fct = torch.nn.CrossEntropyLoss(ignore_index=-100, reduction='none')
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-        loss = loss_fct(shift_logits.view(-1, shift_logits.size(-1)), shift_labels.view(-1))
-        return torch.exp(loss.mean()).item()
-
-    def compute_text_metrics(text):
-        """Обчислює метрики тексту"""
-        tokens = text.split()
-        total_tokens = len(tokens)
-        meaningful_tokens = sum(1 for t in tokens if t.isalnum())
-        perc_meaningful = meaningful_tokens / total_tokens * 100 if total_tokens else 0
-        return total_tokens, perc_meaningful
-
-    def test_text_generation(model, tokenizer, prompts, device):
-        """Тестує генерацію тексту на прикладах"""
-        model.eval()
-        results = {}
-
-        generation_config = {
-            "max_new_tokens": MAX_NEW_TOKENS,
-            "temperature": TEMPERATURE,
-            "top_p": TOP_P,
-            "do_sample": True,
-            "pad_token_id": tokenizer.eos_token_id
-        }
-        
-        for prompt in prompts:
-            inputs = tokenizer(prompt, return_tensors="pt").to(device)
-            
-            with torch.no_grad():
-                # Генерація
-                outputs = model.generate(**inputs, **generation_config)
-                generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                
-                # Метрики
-                logits = model(**inputs).logits
-                ppl = compute_perplexity(logits, inputs["input_ids"])
-                total_tokens, perc_meaningful = compute_text_metrics(generated_text)
-                
-                results[prompt] = {
-                    "generated_text": generated_text,
-                    "perplexity": ppl,
-                    "total_tokens": total_tokens,
-                    "perc_meaningful_tokens": perc_meaningful
-                }
-        
-        model.train()
-        return results
-
-    def test_eval_dataset(model, tokenizer, eval_dataset, device, max_samples):
-        """Тестує модель на eval датасеті"""
-        if eval_dataset is None:
-            return None
-            
-        model.eval()
-        
-        # Обмежуємо кількість зразків
-        test_samples = min(max_samples, len(eval_dataset))
-        eval_subset = eval_dataset.select(range(test_samples))
-        
-        total_loss = 0
-        total_perplexity = 0
-        num_samples = 0
-        
-        with torch.no_grad():
-            for sample in eval_subset:
-                try:
-                    text = sample.get("text", "")
-                    if not text or not isinstance(text, str):
-                        continue
-                    
-                    inputs = tokenizer(text, return_tensors="pt", truncation=True, 
-                                     max_length=CONTEXT_LENGTH).to(device)
-                    
-                    outputs = model(**inputs, labels=inputs["input_ids"])
-                    loss = outputs.loss.item()
-                    ppl = torch.exp(outputs.loss).item()
-                    
-                    total_loss += loss
-                    total_perplexity += ppl
-                    num_samples += 1
-                    
-                except Exception as e:
-                    if pyIanthe_config.DEBUG:
-                        logger.warning(f"Помилка обробки зразка: {e}")
-                    continue
-        
-        model.train()
-        
-        if num_samples == 0:
-            return None
-        
-        return {
-            "num_samples": num_samples,
-            "avg_loss": total_loss / num_samples,
-            "avg_perplexity": total_perplexity / num_samples
-        }
 
     # 8. Callback для промежуточного тестування
     class TestingCallback(TrainerCallback):
@@ -322,8 +223,15 @@ if __name__ == "__main__":
             # Тест генерації тексту
             if pyIanthe_config.TEST_ENABLED and self.test_prompts:
                 logger.info("\n[TEST] Тестування генерації тексту...")
+
                 text_results = test_text_generation(
-                    self.model, self.tokenizer, self.test_prompts, self.device
+                    model=self.model,
+                    tokenizer=self.tokenizer,
+                    prompts=GENERATE_EXAMPLES,
+                    device=self.device,
+                    max_new_tokens=MAX_NEW_TOKENS,
+                    temperature=TEMPERATURE,
+                    top_p=TOP_P
                 )
                 test_results["text_generation"] = text_results
                 
@@ -338,10 +246,18 @@ if __name__ == "__main__":
             # Тест на eval датасеті
             if pyIanthe_config.EVAL_ENABLED and self.eval_dataset:
                 logger.info("\n[EVAL] Тестування на eval датасеті...")
+
                 eval_results = test_eval_dataset(
-                    self.model, self.tokenizer, self.eval_dataset, 
-                    self.device, pyIanthe_config.EVAL_TESTS_COUNT
+                    model=self.model,
+                    tokenizer=self.tokenizer,
+                    eval_dataset=self.eval_dataset,
+                    device=self.device,
+                    max_samples=pyIanthe_config.EVAL_TESTS_COUNT,
+                    context_length=CONTEXT_LENGTH,
+                    debug=pyIanthe_config.DEBUG,
+                    logger=logger
                 )
+
                 if eval_results:
                     test_results["eval_dataset"] = eval_results
                     logger.info(f"  Зразків: {eval_results['num_samples']}")

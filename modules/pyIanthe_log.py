@@ -1,4 +1,4 @@
-# pyIanthe_debug.py
+# modules/pyIanthe_log.py
 import os
 import sys
 import logging
