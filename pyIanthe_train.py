@@ -4,6 +4,9 @@ import sys
 import json
 import torch
 import shutil
+import numpy as np
+import random
+
 from datetime import datetime
 from transformers import (
     AutoTokenizer,
@@ -102,6 +105,17 @@ if __name__ == "__main__":
                                     batched=True, remove_columns=["text"])
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
+
+
+
+
+
+
+
+
+
+
+
     # 5. Завантаження моделі
     vocab_size = len(tokenizer)
     main_model_exists = os.path.exists(os.path.join(MAIN_MODEL_DIR, "model.safetensors"))
@@ -139,31 +153,6 @@ if __name__ == "__main__":
         model.tie_weights()
         logger.info("✓ Прив'язані ваги lm_head оновлено")
 
-    # Чекпоинт используется только для восстановления состояния тренера
-    resume_from = LAST_CHECKPOINT if LAST_CHECKPOINT and os.path.exists(os.path.join(LAST_CHECKPOINT, "model.safetensors")) else None
-
-    if resume_from:
-        logger.info(f"Чекпоінт для відновлення тренера знайдено: {resume_from}")
-    else:
-        logger.info("Чекпоінт для відновлення тренера не знайдено або не використовується")
-
-    logger.info(f"Модель завантажена, параметрів: {model.num_parameters():,}")
-    
-    # Перевірка привязки lm_head до embeddings
-    if hasattr(model, 'lm_head') and hasattr(model, 'transformer'):
-        if hasattr(model.transformer, 'wte'):
-            lm_head_ptr = model.lm_head.weight.data_ptr()
-            wte_ptr = model.transformer.wte.weight.data_ptr()
-            if lm_head_ptr == wte_ptr:
-                logger.info("✓ lm_head.weight правильно прив'язаний до wte")
-            else:
-                logger.warning("⚠ lm_head.weight НЕ прив'язаний до wte")
-
-    # Gradient Checkpointing
-    if pyIanthe_config.GRADIENT_CHECKPOINTING:
-        model.gradient_checkpointing_enable()
-        logger.info("✓ Gradient checkpointing увімкнено")
-    
     # 6. Завантаження тестових прикладів
     GENERATE_EXAMPLES = load_test_examples(
         logger=logger,
@@ -172,9 +161,6 @@ if __name__ == "__main__":
         max_examples=pyIanthe_config.TEXT_TESTS_COUNT
     )
 
-    # 7. Функції тестування та метрик
-
-    # 8. Callback для промежуточного тестування
     class TestingCallback(TrainerCallback):
         """Callback для запуску тестів під час тренування"""
         
@@ -208,13 +194,13 @@ if __name__ == "__main__":
             
             logger.info(f"\n{'='*60}")
             logger.info(f"ПРОМІЖНЕ ТЕСТУВАННЯ")
-            logger.info(f"Епоха: {self.current_epoch}, Крок: {state.global_step}")
+            logger.info(f"Епоха: {self.current_epoch+1}, Крок: {state.global_step}")
             logger.info(f"Час: {timestamp}")
             logger.info(f"{'='*60}")
             
             test_results = {
                 "timestamp": timestamp,
-                "epoch": self.current_epoch,
+                "epoch": self.current_epoch+1,
                 "global_step": state.global_step,
                 "text_generation": None,
                 "eval_dataset": None
@@ -278,8 +264,9 @@ if __name__ == "__main__":
             
             logger.info(f"{'='*60}\n")
 
-    # 9. TrainingArguments і Trainer
-    
+
+
+
     # Розрахунок ефективного розміру батчу
     effective_batch_size = (PER_DEVICE_BATCH_SIZE * 
                            pyIanthe_config.GRADIENT_ACCUMULATION_STEPS * 
@@ -327,6 +314,72 @@ if __name__ == "__main__":
         data_collator=data_collator,
         callbacks=[testing_callback]  # Додаємо callback
     )
+
+
+
+
+
+
+
+
+
+    # Чекпоинт используется только для восстановления состояния тренера
+    resume_from = LAST_CHECKPOINT if LAST_CHECKPOINT and os.path.exists(os.path.join(LAST_CHECKPOINT, "model.safetensors")) else None
+
+    if resume_from:
+        logger.info(f"Чекпоінт для відновлення тренера знайдено: {resume_from}")
+
+        # Пути к аварийным файлам
+        emerg_rng_state_path = os.path.join(resume_from, "rng_state.pth")
+        emerg_scaler_state_path = os.path.join(resume_from, "scaler.pt")
+
+        # Восстановление состояния RNG
+        if os.path.exists(emerg_rng_state_path):
+            with torch.serialization.safe_globals([np.core.multiarray._reconstruct, np.ndarray]):
+                rng_state = torch.load(emerg_rng_state_path, weights_only=False)
+                torch.set_rng_state(rng_state["cpu"])
+                cuda_states = rng_state.get("cuda", [])        
+                if cuda_states is not None and len(cuda_states) > 0:
+                    for i, state in enumerate(cuda_states):
+                        if i < num_gpus:
+                            try:
+                                torch.cuda.set_rng_state(state, device=i)
+                            except RuntimeError as e:
+                                print(f"GPU {i}: невозможно восстановить RNG ({e})")
+                np.random.set_state(rng_state["numpy"])
+                random.setstate(rng_state["python"])
+            logger.info("✓ RNG state відновлено з аварійного чекпоінта")
+
+        # Восстановление состояния scaler для fp16
+        if fp16 and os.path.exists(emerg_scaler_state_path):
+            trainer.scaler.load_state_dict(torch.load(emerg_scaler_state_path))
+            logger.info("✓ Scaler state відновлено з аварійного чекпоінта")
+
+    else:
+        logger.info("Чекпоінт для відновлення тренера не знайдено або не використовується")
+
+    logger.info(f"Модель завантажена, параметрів: {model.num_parameters():,}")
+    
+    # Перевірка привязки lm_head до embeddings
+    if hasattr(model, 'lm_head') and hasattr(model, 'transformer'):
+        if hasattr(model.transformer, 'wte'):
+            lm_head_ptr = model.lm_head.weight.data_ptr()
+            wte_ptr = model.transformer.wte.weight.data_ptr()
+            if lm_head_ptr == wte_ptr:
+                logger.info("✓ lm_head.weight правильно прив'язаний до wte")
+            else:
+                logger.warning("⚠ lm_head.weight НЕ прив'язаний до wte")
+
+    # Gradient Checkpointing
+    if pyIanthe_config.GRADIENT_CHECKPOINTING:
+        model.gradient_checkpointing_enable()
+        logger.info("✓ Gradient checkpointing увімкнено")
+    
+    # 7. Функції тестування та метрик
+
+    # 8. Callback для промежуточного тестування
+    # 9. TrainingArguments і Trainer
+    
 
     # 10. Функція для фінального звіту після епохи
     def generate_epoch_report(epoch_index):
@@ -407,17 +460,32 @@ if __name__ == "__main__":
             os.makedirs(emergency_checkpoint, exist_ok=True)
             trainer.save_model(emergency_checkpoint)
             trainer.save_state()
-            
-            for fname in ["trainer_state.json", "optimizer.pt", "scheduler.pt", "rng_state.pth", "scaler.pt"]:
-                src = os.path.join(CHECKPOINT_DIR, fname)
-                dst = os.path.join(emergency_checkpoint, fname)
-                if os.path.exists(src):
-                    shutil.copy2(src, dst)
-            
+
+            emerg_tr_state_path = os.path.join(emergency_checkpoint, "trainer_state.json")
+            emerg_opt_state_path = os.path.join(emergency_checkpoint, "optimizer.pt")
+            emerg_sched_state_path = os.path.join(emergency_checkpoint, "scheduler.pt")
+            emerg_rng_state_path = os.path.join(emergency_checkpoint, "rng_state.pth")
+            emerg_scaler_state_path = os.path.join(emergency_checkpoint, "scaler.pt")
+
+            trainer.state.save_to_json(emerg_tr_state_path)
+            if trainer.optimizer is not None:
+                torch.save(trainer.optimizer.state_dict(), emerg_opt_state_path)
+            if trainer.lr_scheduler is not None:
+                torch.save(trainer.lr_scheduler.state_dict(), emerg_sched_state_path)
+            rng_state = {
+                "torch": torch.get_rng_state(),
+                "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+                "numpy": np.random.get_state(),
+                "python": random.getstate()
+            }
+            torch.save(rng_state, emerg_rng_state_path)
+            if fp16 and hasattr(trainer, "scaler") and trainer.scaler is not None:
+                torch.save(trainer.scaler.state_dict(), emerg_scaler_state_path)            
+
             logger.info(f"✓ Аварійний чекпоінт: {emergency_checkpoint}")
             logger.info("Для продовження запустіть скрипт знову")
             sys.exit(0)
-        
+
         # Після кожної епохи зберігаємо:
         
         # 1) Головну модель у model/
