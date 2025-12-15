@@ -17,6 +17,7 @@ from transformers import (
 from datasets import load_from_disk
 from modules.pyIanthe_log import setup_logging, configure_runtime
 from modules.pyIanthe_hw import get_num_workers
+from modules.pyIanthe_utils import get_last_checkpoint
 import pyIanthe_config
 
 if __name__ == "__main__":
@@ -62,25 +63,7 @@ if __name__ == "__main__":
     os.makedirs(CHECKPOINT_DIR, exist_ok=True)
     os.makedirs(MAIN_MODEL_DIR, exist_ok=True)
     os.makedirs(REPORTS_DIR, exist_ok=True)
-
-    # Функція для останнього чекпоінта
-    def get_last_checkpoint():
-        if not os.path.isdir(CHECKPOINT_DIR):
-            return None
-        dirs = [d for d in os.listdir(CHECKPOINT_DIR) if os.path.isdir(os.path.join(CHECKPOINT_DIR, d))]
-        if not dirs:
-            return None
-        try:
-            checkpoint_dirs = [d for d in dirs if d.startswith("checkpoint-")]
-            if checkpoint_dirs:
-                dirs_sorted = sorted(checkpoint_dirs, key=lambda x: int(x.split("-")[-1]))
-                return os.path.join(CHECKPOINT_DIR, dirs_sorted[-1])
-        except:
-            pass
-        dirs_sorted = sorted(dirs)
-        return os.path.join(CHECKPOINT_DIR, dirs_sorted[-1])
-
-    last_checkpoint = get_last_checkpoint()
+    LAST_CHECKPOINT = get_last_checkpoint(CHECKPOINT_DIR)
 
     # 2. Конфігурація навчання
     EPOCHS = pyIanthe_config.EPOCHS
@@ -88,13 +71,9 @@ if __name__ == "__main__":
     PER_DEVICE_BATCH_SIZE = pyIanthe_config.PER_DEVICE_BATCH_SIZE
     CONTEXT_LENGTH = pyIanthe_config.CONTEXT_LENGTH
     SAVE_STEPS = pyIanthe_config.SAVE_STEPS
-
-    TRAINING_CONFIG = {
-        "max_new_tokens": 50,
-        "temperature": 0.8,
-        "top_p": 0.9,
-        "num_train_epochs": EPOCHS
-    }
+    MAX_NEW_TOKENS = pyIanthe_config.GEN_TEST_MNEW_TOKENS
+    TEMPERATURE = pyIanthe_config.GEN_TEST_TEMPERATURE
+    TOP_P = pyIanthe_config.GEN_TEST_TOP_P
 
     # 3. Завантаження датасету
     train_dataset_path = pyIanthe_config.FOLDER_TRAIN_DATASET
@@ -137,14 +116,14 @@ if __name__ == "__main__":
 
     # 5. Завантаження моделі
     vocab_size = len(tokenizer)
-    checkpoint_has_model = last_checkpoint and os.path.exists(os.path.join(last_checkpoint, "model.safetensors"))
+    checkpoint_has_model = LAST_CHECKPOINT and os.path.exists(os.path.join(LAST_CHECKPOINT, "model.safetensors"))
     main_model_exists = os.path.exists(os.path.join(MAIN_MODEL_DIR, "model.safetensors"))
 
     if checkpoint_has_model:
-        logger.info(f"Знайдено чекпоінт з моделлю: {last_checkpoint}")
+        logger.info(f"Знайдено чекпоінт з моделлю: {LAST_CHECKPOINT}")
         logger.info("Завантажуємо модель з чекпоінта (навчання продовжиться)")
         model = AutoModelForCausalLM.from_pretrained(
-                last_checkpoint,
+                LAST_CHECKPOINT,
                 ignore_mismatched_sizes=False,
                 local_files_only=True,
                 attn_implementation=attn_impl  # аттеншен
@@ -152,7 +131,7 @@ if __name__ == "__main__":
         if hasattr(model, 'tie_weights'):
             model.tie_weights()
             logger.info("✓ Прив'язані ваги lm_head оновлено")
-        resume_from = last_checkpoint
+        resume_from = LAST_CHECKPOINT
         
     elif main_model_exists:
         logger.info(f"Чекпоінта немає, але знайдено модель у: {MAIN_MODEL_DIR}")
@@ -263,11 +242,11 @@ if __name__ == "__main__":
         """Тестує генерацію тексту на прикладах"""
         model.eval()
         results = {}
-        
+
         generation_config = {
-            "max_new_tokens": TRAINING_CONFIG["max_new_tokens"],
-            "temperature": TRAINING_CONFIG["temperature"],
-            "top_p": TRAINING_CONFIG["top_p"],
+            "max_new_tokens": MAX_NEW_TOKENS,
+            "temperature": TEMPERATURE,
+            "top_p": TOP_P,
             "do_sample": True,
             "pad_token_id": tokenizer.eos_token_id
         }
@@ -490,17 +469,17 @@ if __name__ == "__main__":
         report = {}
         
         logger.info(f"\n[REPORT] Генерація звіту по епосі {epoch_index+1}...")
-        
+
         for prompt in GENERATE_EXAMPLES:
             inputs = tokenizer(prompt, return_tensors="pt").to(device)
             with torch.no_grad():
                 outputs = model.generate(
                     **inputs,
-                    max_new_tokens=TRAINING_CONFIG["max_new_tokens"],
-                    temperature=TRAINING_CONFIG["temperature"],
-                    top_p=TRAINING_CONFIG["top_p"],
-                    do_sample=True,
-                    pad_token_id=tokenizer.eos_token_id
+                    max_new_tokens = MAX_NEW_TOKENS,
+                    temperature = TEMPERATURE,
+                    top_p = TOP_P,
+                    do_sample = True,
+                    pad_token_id = tokenizer.eos_token_id
                 )
                 text = tokenizer.decode(outputs[0], skip_special_tokens=True)
                 avg_len, perc_meaningful = compute_text_metrics(text)
