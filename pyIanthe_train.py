@@ -14,10 +14,10 @@ from transformers import (
     GPT2Config,
     TrainerCallback
 )
-from datasets import load_from_disk
 from modules.pyIanthe_log import setup_logging, configure_runtime
 from modules.pyIanthe_hw import get_num_workers
-from modules.pyIanthe_utils import get_last_checkpoint
+from modules.pyIanthe_utils import get_last_checkpoint, load_test_examples
+from modules.pyIanthe_dataset import load_datasets
 import pyIanthe_config
 
 if __name__ == "__main__":
@@ -74,32 +74,19 @@ if __name__ == "__main__":
     MAX_NEW_TOKENS = pyIanthe_config.GEN_TEST_MNEW_TOKENS
     TEMPERATURE = pyIanthe_config.GEN_TEST_TEMPERATURE
     TOP_P = pyIanthe_config.GEN_TEST_TOP_P
+    # Конфігурація моделі
+    N_EMBD = pyIanthe_config.EMBEDDING_DIM
+    N_LAYER = pyIanthe_config.NUM_LAYERS
+    N_HEAD = pyIanthe_config.HEADS
 
     # 3. Завантаження датасету
-    train_dataset_path = pyIanthe_config.FOLDER_TRAIN_DATASET
-    if not os.path.exists(train_dataset_path):
-        logger.error(f"Папка датасету не знайдена: {train_dataset_path}")
+    try:
+        dataset, eval_dataset = load_datasets(
+            config=pyIanthe_config,
+            logger=logger
+        )
+    except Exception:
         sys.exit(1)
-
-    arrow_files = [f for f in os.listdir(train_dataset_path) if f.endswith('.arrow')]
-    dataset_info = os.path.join(train_dataset_path, 'dataset_info.json')
-    if not arrow_files and not os.path.exists(dataset_info):
-        logger.error(f"Папка {train_dataset_path} порожня або не містить датасет")
-        sys.exit(1)
-
-    dataset = load_from_disk(train_dataset_path)
-    logger.info(f"Датасет завантажено, записів: {len(dataset)}")
-
-    # Завантаження eval датасету якщо потрібно
-    eval_dataset = None
-    if pyIanthe_config.EVAL_ENABLED:
-        eval_dataset_path = pyIanthe_config.FOLDER_EVAL_DATASET
-        if os.path.exists(eval_dataset_path):
-            try:
-                eval_dataset = load_from_disk(eval_dataset_path)
-                logger.info(f"Eval датасет завантажено, записів: {len(eval_dataset)}")
-            except Exception as e:
-                logger.warning(f"Не вдалося завантажити eval датасет: {e}")
 
     # 4. Токенізатор
     tokenizer_source_dir = os.path.join(pyIanthe_config.FOLDER_MODELS, *pyIanthe_config.MODEL_ID.split("/"))
@@ -116,57 +103,48 @@ if __name__ == "__main__":
 
     # 5. Завантаження моделі
     vocab_size = len(tokenizer)
-    checkpoint_has_model = LAST_CHECKPOINT and os.path.exists(os.path.join(LAST_CHECKPOINT, "model.safetensors"))
     main_model_exists = os.path.exists(os.path.join(MAIN_MODEL_DIR, "model.safetensors"))
 
-    if checkpoint_has_model:
-        logger.info(f"Знайдено чекпоінт з моделлю: {LAST_CHECKPOINT}")
-        logger.info("Завантажуємо модель з чекпоінта (навчання продовжиться)")
+    # Загружаем основную модель или создаём новую
+    if main_model_exists:
+        logger.info(f"Завантажуємо основну модель з {MAIN_MODEL_DIR}")
         model = AutoModelForCausalLM.from_pretrained(
-                LAST_CHECKPOINT,
-                ignore_mismatched_sizes=False,
-                local_files_only=True,
-                attn_implementation=attn_impl  # аттеншен
-            ).to(device)
-        if hasattr(model, 'tie_weights'):
-            model.tie_weights()
-            logger.info("✓ Прив'язані ваги lm_head оновлено")
-        resume_from = LAST_CHECKPOINT
-        
-    elif main_model_exists:
-        logger.info(f"Чекпоінта немає, але знайдено модель у: {MAIN_MODEL_DIR}")
-        logger.info("Завантажуємо модель (optimizer почнеться з нуля)")
-        model = AutoModelForCausalLM.from_pretrained(
-                MAIN_MODEL_DIR,
-                ignore_mismatched_sizes=False,
-                local_files_only=True,
-                attn_implementation=attn_impl  # аттеншен
-            ).to(device)
-        if hasattr(model, 'tie_weights'):
-            model.tie_weights()
-            logger.info("✓ Прив'язані ваги lm_head оновлено")
-        resume_from = None
-        
+            MAIN_MODEL_DIR,
+            ignore_mismatched_sizes=False,
+            local_files_only=True,
+            attn_implementation=attn_impl
+        ).to(device)
     else:
-        logger.info("Не знайдено ні чекпоінта, ні моделі")
-        logger.info("Створюємо нову модель з конфігурації GPT2")
+        logger.info("Основна модель не знайдена, створюємо нову")
         config = GPT2Config(
             vocab_size=vocab_size,
             n_positions=CONTEXT_LENGTH,
             n_ctx=CONTEXT_LENGTH,
-            n_embd=pyIanthe_config.EMBEDDING_DIM,
-            n_layer=pyIanthe_config.NUM_LAYERS,
-            n_head=pyIanthe_config.HEADS,
+            n_embd=N_EMBD,
+            n_layer=N_LAYER,
+            n_head=N_HEAD,
             use_cache=False,
             pad_token_id=tokenizer.eos_token_id,
             tie_word_embeddings=True,
             loss_type=None,
         )
         model = AutoModelForCausalLM.from_config(
-                config,
-                attn_implementation=attn_impl  # аттеншен
-            ).to(device)
-        resume_from = None
+            config,
+            attn_implementation=attn_impl
+        ).to(device)
+
+    # Проверка привязки lm_head
+    if hasattr(model, 'tie_weights'):
+        model.tie_weights()
+        logger.info("✓ Прив'язані ваги lm_head оновлено")
+
+    # Чекпоинт используется только для восстановления состояния тренера
+    resume_from = LAST_CHECKPOINT if LAST_CHECKPOINT and os.path.exists(os.path.join(LAST_CHECKPOINT, "model.safetensors")) else None
+
+    if resume_from:
+        logger.info(f"Чекпоінт для відновлення тренера знайдено: {resume_from}")
+    else:
+        logger.info("Чекпоінт для відновлення тренера не знайдено або не використовується")
 
     logger.info(f"Модель завантажена, параметрів: {model.num_parameters():,}")
     
@@ -184,42 +162,14 @@ if __name__ == "__main__":
     if pyIanthe_config.GRADIENT_CHECKPOINTING:
         model.gradient_checkpointing_enable()
         logger.info("✓ Gradient checkpointing увімкнено")
-        logger.info("  → Можна збільшити batch size")
+    
     # 6. Завантаження тестових прикладів
-    def load_test_examples():
-        """Завантажує тестові приклади з JSON файлу"""
-        test_file = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.TEXT_TEST_FILENAME)
-        
-        if not os.path.exists(test_file):
-            logger.warning(f"Файл тестових прикладів не знайдено: {test_file}")
-            logger.info("Використовуються стандартні приклади")
-            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
-        
-        try:
-            with open(test_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                
-            if isinstance(data, list):
-                examples = data[:pyIanthe_config.TEXT_TESTS_COUNT]
-                logger.info(f"Завантажено {len(examples)} тестових прикладів з {test_file}")
-                return examples
-                
-            elif isinstance(data, dict) and "examples" in data:
-                examples = data["examples"][:pyIanthe_config.TEXT_TESTS_COUNT]
-                logger.info(f"Завантажено {len(examples)} тестових прикладів з {test_file}")
-                return examples
-                
-            else:
-                logger.warning(f"Невідомий формат файлу {test_file}")
-                logger.info("Використовуються стандартні приклади")
-                return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
-                
-        except Exception as e:
-            logger.error(f"Помилка при завантаженні {test_file}: {e}")
-            logger.info("Використовуються стандартні приклади")
-            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
-
-    GENERATE_EXAMPLES = load_test_examples()
+    GENERATE_EXAMPLES = load_test_examples(
+        logger=logger,
+        base_dir=pyIanthe_config.BASE_DIR,
+        filename=pyIanthe_config.TEXT_TEST_FILENAME,
+        max_examples=pyIanthe_config.TEXT_TESTS_COUNT
+    )
 
     # 7. Функції тестування та метрик
     def compute_perplexity(logits, labels):
