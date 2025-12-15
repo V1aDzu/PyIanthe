@@ -18,7 +18,7 @@ class TestingCallback(TrainerCallback):
         self.current_epoch = 0
         self.CONTEXT_LENGTH = config.CONTEXT_LENGTH
         self.DEBUG = config.DEBUG
-        self.REPORTS_DIR = config.REPORTS_DIR
+        self.FOLDER_REPORTS = config.FOLDER_REPORTS
         self.EVAL_STEPS = config.EVAL_STEPS
         self.TEST_ENABLED = config.TEST_ENABLED
         self.EVAL_ENABLED = config.EVAL_ENABLED
@@ -98,7 +98,7 @@ class TestingCallback(TrainerCallback):
         # Зберігаємо JSON звіт тільки якщо є результати
         if test_results["text_generation"] or test_results["eval_dataset"]:
             report_filename = f"test_epoch{self.current_epoch}_step{state.global_step}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-            report_path = os.path.join(self.REPORTS_DIR, report_filename)
+            report_path = os.path.join(self.FOLDER_REPORTS, report_filename)
             with open(report_path, "w", encoding="utf-8") as f:
                 json.dump(test_results, f, ensure_ascii=False, indent=2)
             self.logger.info(f"\n✓ Звіт збережено: {report_filename}")

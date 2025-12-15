@@ -59,7 +59,7 @@ WIN_WORKERS = True
 PIN_MEMORY = True               # прискорення на GPU
 BF16 = True                     # Ampere/Ada GPU
 FP16 = False                    # половинна точність на GPU
-ATTENTION_TYPE = "sdpa"         # "eager"- звичайний (без),"sdpa" - флеш атт, "flash_attention_2" - флеш атт 2
+ATTENTION_TYPE = "spda"         # "eager"- звичайний (без),"sdpa" - флеш атт, "flash_attention_2" - флеш атт 2
 GRADIENT_CHECKPOINTING = False
 GRADIENT_ACCUMULATION_STEPS = 1 # Кількість кроків для акумуляції градієнтів
 

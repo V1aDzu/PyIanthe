@@ -37,7 +37,10 @@ if __name__ == "__main__":
     )
 
     # 0. GPU та налаштування
-    device, fp16, bf16, pin_memory, num_gpus, attn_impl = get_device_config()    
+    device, fp16, bf16, pin_memory, num_gpus, attn_impl = get_device_config(
+        config=pyIanthe_config,
+        logger=logger       
+    )    
 
     # Визначаємо фактичну кількість воркерів
     actual_num_workers = get_num_workers(
@@ -123,10 +126,10 @@ if __name__ == "__main__":
             attn_implementation=attn_impl
         ).to(device)
 
-    # Проверка привязки lm_head
-    if hasattr(model, 'tie_weights'):
-        model.tie_weights()
-        logger.info("✓ Прив'язані ваги lm_head оновлено")
+    # Привязка lm_head
+    #if hasattr(model, 'tie_weights'):
+    #    model.tie_weights()
+    #    logger.info("✓ Прив'язані ваги lm_head оновлено")
 
     # 6. Завантаження тестових прикладів
     GENERATE_EXAMPLES = load_test_examples(
@@ -207,19 +210,33 @@ if __name__ == "__main__":
         # Восстановление состояния RNG
         if os.path.exists(emerg_rng_state_path):
             with torch.serialization.safe_globals([np.core.multiarray._reconstruct, np.ndarray]):
-                rng_state = torch.load(emerg_rng_state_path, weights_only=False)
-                torch.set_rng_state(rng_state["cpu"])
-                cuda_states = rng_state.get("cuda", [])        
-                if cuda_states is not None and len(cuda_states) > 0:
-                    for i, state in enumerate(cuda_states):
-                        if i < num_gpus:
-                            try:
-                                torch.cuda.set_rng_state(state, device=i)
-                            except RuntimeError as e:
-                                print(f"GPU {i}: невозможно восстановить RNG ({e})")
-                np.random.set_state(rng_state["numpy"])
-                random.setstate(rng_state["python"])
+                rng_states = torch.load(emerg_rng_state_path, weights_only=False)
+                random.setstate(rng_states["python"])
+                np.random.set_state(rng_states["numpy"])
+                torch.random.set_rng_states(rng_state["cpu"])
+                if "cuda" in rng_state and torch.cuda.is_available():
+                    #torch.cuda.random.set_rng_state_all(rng_states["cuda"])
+                    cuda_states = rng_state.get("cuda", [])
+                    if cuda_states is not None and len(cuda_states) > 0:
+                        for i, state in enumerate(cuda_states):
+                            if i < num_gpus:
+                                try:
+                                    torch.cuda.set_rng_state(state, device=i)
+                                except RuntimeError as e:
+                                    print(f"GPU {i}: невозможно восстановить RNG ({e})")
             logger.info("✓ RNG state відновлено з аварійного чекпоінта")
+
+            if hasattr(model, 'lm_head') and hasattr(model, 'transformer'):
+                if hasattr(model.transformer, 'wte'):
+                    lm_head_ptr = model.lm_head.weight.data_ptr()
+                    wte_ptr = model.transformer.wte.weight.data_ptr()
+                    if lm_head_ptr == wte_ptr:
+                        logger.info("✓ lm_head.weight правильно прив'язаний до wte")
+                    else:
+                        logger.warning("⚠ lm_head.weight НЕ прив'язаний до wte")
+
+
+
 
         # Восстановление состояния scaler для fp16
         if fp16 and os.path.exists(emerg_scaler_state_path):
@@ -232,14 +249,14 @@ if __name__ == "__main__":
     logger.info(f"Модель завантажена, параметрів: {model.num_parameters():,}")
     
     # Перевірка привязки lm_head до embeddings
-    if hasattr(model, 'lm_head') and hasattr(model, 'transformer'):
-        if hasattr(model.transformer, 'wte'):
-            lm_head_ptr = model.lm_head.weight.data_ptr()
-            wte_ptr = model.transformer.wte.weight.data_ptr()
-            if lm_head_ptr == wte_ptr:
-                logger.info("✓ lm_head.weight правильно прив'язаний до wte")
-            else:
-                logger.warning("⚠ lm_head.weight НЕ прив'язаний до wte")
+    #if hasattr(model, 'lm_head') and hasattr(model, 'transformer'):
+    #    if hasattr(model.transformer, 'wte'):
+    #        lm_head_ptr = model.lm_head.weight.data_ptr()
+    #        wte_ptr = model.transformer.wte.weight.data_ptr()
+    #        if lm_head_ptr == wte_ptr:
+    #            logger.info("✓ lm_head.weight правильно прив'язаний до wte")
+    #        else:
+    #            logger.warning("⚠ lm_head.weight НЕ прив'язаний до wte")
 
     # Gradient Checkpointing
     if pyIanthe_config.GRADIENT_CHECKPOINTING:
@@ -324,13 +341,14 @@ if __name__ == "__main__":
                 model.config.tie_word_embeddings = True
             model.save_pretrained(MAIN_MODEL_DIR)
             tokenizer.save_pretrained(MAIN_MODEL_DIR)
+            #trainer.state.save_to_json(MAIN_MODEL_DIR)
             logger.info(f"✓ Модель збережена у: {MAIN_MODEL_DIR}")
             
             # Зберігаємо аварійний чекпоінт
             emergency_checkpoint = os.path.join(CHECKPOINT_DIR, f"checkpoint-interrupted-epoch{epoch+1}")
             os.makedirs(emergency_checkpoint, exist_ok=True)
             trainer.save_model(emergency_checkpoint)
-            trainer.save_state()
+            #trainer.save_state()
 
             emerg_tr_state_path = os.path.join(emergency_checkpoint, "trainer_state.json")
             emerg_opt_state_path = os.path.join(emergency_checkpoint, "optimizer.pt")
@@ -343,13 +361,14 @@ if __name__ == "__main__":
                 torch.save(trainer.optimizer.state_dict(), emerg_opt_state_path)
             if trainer.lr_scheduler is not None:
                 torch.save(trainer.lr_scheduler.state_dict(), emerg_sched_state_path)
-            rng_state = {
-                "torch": torch.get_rng_state(),
-                "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else None,
+            rng_states = {
+                "python": random.getstate(),
                 "numpy": np.random.get_state(),
-                "python": random.getstate()
+                "cpu": torch.random.get_rng_state(),
             }
-            torch.save(rng_state, emerg_rng_state_path)
+            if torch.cuda.is_available():
+                rng_states["cuda"] = torch.cuda.random.get_rng_state_all()
+            torch.save(rng_states, emerg_rng_state_pathrng_states)
             if fp16 and hasattr(trainer, "scaler") and trainer.scaler is not None:
                 torch.save(trainer.scaler.state_dict(), emerg_scaler_state_path)            
 
