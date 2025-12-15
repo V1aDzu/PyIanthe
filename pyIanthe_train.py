@@ -7,21 +7,20 @@ import shutil
 import numpy as np
 import random
 
-from datetime import datetime
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
     Trainer,
     TrainingArguments,
     DataCollatorForLanguageModeling,
-    GPT2Config,
-    TrainerCallback
+    GPT2Config    
 )
 from modules.pyIanthe_log import setup_logging, configure_runtime
 from modules.pyIanthe_hw import get_device_config, get_num_workers
 from modules.pyIanthe_utils import get_last_checkpoint, load_test_examples
 from modules.pyIanthe_dataset import load_datasets
-from modules.pyIanthe_metrics import test_text_generation, compute_perplexity, compute_text_metrics, test_eval_dataset
+from modules.pyIanthe_metrics import compute_perplexity, compute_text_metrics
+from modules.pyIanthe_test_callbacks import TestingCallback
 import pyIanthe_config
 
 if __name__ == "__main__":
@@ -64,6 +63,7 @@ if __name__ == "__main__":
     MAX_NEW_TOKENS = pyIanthe_config.GEN_TEST_MNEW_TOKENS
     TEMPERATURE = pyIanthe_config.GEN_TEST_TEMPERATURE
     TOP_P = pyIanthe_config.GEN_TEST_TOP_P
+
     # Конфігурація моделі
     N_EMBD = pyIanthe_config.EMBEDDING_DIM
     N_LAYER = pyIanthe_config.NUM_LAYERS
@@ -136,112 +136,6 @@ if __name__ == "__main__":
         max_examples=pyIanthe_config.TEXT_TESTS_COUNT
     )
 
-    class TestingCallback(TrainerCallback):
-        """Callback для запуску тестів під час тренування"""
-        
-        def __init__(self, model, tokenizer, device, test_prompts, eval_dataset):
-            self.model = model
-            self.tokenizer = tokenizer
-            self.device = device
-            self.test_prompts = test_prompts
-            self.eval_dataset = eval_dataset
-            self.current_epoch = 0
-        
-        def on_epoch_begin(self, args, state, control, **kwargs):
-            """Відслідковує початок епохи"""
-            self.current_epoch = int(state.epoch) if state.epoch is not None else 0
-        
-        def on_step_end(self, args, state, control, **kwargs):
-            """Викликається після кожного кроку"""
-            # Перевіряємо чи потрібно запускати тести
-            if state.global_step % pyIanthe_config.EVAL_STEPS != 0:
-                return
-            
-            if state.global_step == 0:
-                return
-            
-            # Якщо обидва тести вимкнені - не запускати callback взагалі
-            if not pyIanthe_config.TEST_ENABLED and not pyIanthe_config.EVAL_ENABLED:
-                return
-            
-            # Запускаємо тести
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            logger.info(f"\n{'='*60}")
-            logger.info(f"ПРОМІЖНЕ ТЕСТУВАННЯ")
-            logger.info(f"Епоха: {self.current_epoch+1}, Крок: {state.global_step}")
-            logger.info(f"Час: {timestamp}")
-            logger.info(f"{'='*60}")
-            
-            test_results = {
-                "timestamp": timestamp,
-                "epoch": self.current_epoch+1,
-                "global_step": state.global_step,
-                "text_generation": None,
-                "eval_dataset": None
-            }
-            
-            # Тест генерації тексту
-            if pyIanthe_config.TEST_ENABLED and self.test_prompts:
-                logger.info("\n[TEST] Тестування генерації тексту...")
-
-                text_results = test_text_generation(
-                    model=self.model,
-                    tokenizer=self.tokenizer,
-                    prompts=GENERATE_EXAMPLES,
-                    device=self.device,
-                    max_new_tokens=MAX_NEW_TOKENS,
-                    temperature=TEMPERATURE,
-                    top_p=TOP_P
-                )
-                test_results["text_generation"] = text_results
-                
-                # Виводимо приклад
-                first_prompt = self.test_prompts[0]
-                result = text_results[first_prompt]
-                logger.info(f"  Промпт: {first_prompt}")
-                logger.info(f"  Текст: {result['generated_text'][:100]}...")
-                logger.info(f"  Perplexity: {result['perplexity']:.2f}")
-                logger.info(f"  Токенів: {result['total_tokens']}")
-            
-            # Тест на eval датасеті
-            if pyIanthe_config.EVAL_ENABLED and self.eval_dataset:
-                logger.info("\n[EVAL] Тестування на eval датасеті...")
-
-                eval_results = test_eval_dataset(
-                    model=self.model,
-                    tokenizer=self.tokenizer,
-                    eval_dataset=self.eval_dataset,
-                    device=self.device,
-                    max_samples=pyIanthe_config.EVAL_TESTS_COUNT,
-                    context_length=CONTEXT_LENGTH,
-                    debug=pyIanthe_config.DEBUG,
-                    logger=logger
-                )
-
-                if eval_results:
-                    test_results["eval_dataset"] = eval_results
-                    logger.info(f"  Зразків: {eval_results['num_samples']}")
-                    logger.info(f"  Avg Loss: {eval_results['avg_loss']:.4f}")
-                    logger.info(f"  Avg Perplexity: {eval_results['avg_perplexity']:.2f}")
-            
-            # Зберігаємо JSON звіт тільки якщо є результати
-            if test_results["text_generation"] or test_results["eval_dataset"]:
-                report_filename = f"test_epoch{self.current_epoch}_step{state.global_step}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-                report_path = os.path.join(REPORTS_DIR, report_filename)
-                
-                with open(report_path, "w", encoding="utf-8") as f:
-                    json.dump(test_results, f, ensure_ascii=False, indent=2)
-                
-                logger.info(f"\n✓ Звіт збережено: {report_filename}")
-            else:
-                logger.info(f"\n[INFO] Тести вимкнені, звіт не створено")
-            
-            logger.info(f"{'='*60}\n")
-
-
-
-
     # Розрахунок ефективного розміру батчу
     effective_batch_size = (PER_DEVICE_BATCH_SIZE * 
                            pyIanthe_config.GRADIENT_ACCUMULATION_STEPS * 
@@ -279,7 +173,9 @@ if __name__ == "__main__":
         tokenizer=tokenizer,
         device=device,
         test_prompts=GENERATE_EXAMPLES if pyIanthe_config.TEST_ENABLED else None,
-        eval_dataset=eval_dataset if pyIanthe_config.EVAL_ENABLED else None
+        eval_dataset=eval_dataset if pyIanthe_config.EVAL_ENABLED else None,
+        config=pyIanthe_config,
+        logger=logger
     )
 
     trainer = Trainer(
