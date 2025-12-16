@@ -548,8 +548,13 @@ if __name__ == "__main__":
             tokenizer.save_pretrained(MAIN_MODEL_DIR)
             logger.info(f"✓ Модель збережена у: {MAIN_MODEL_DIR}")
             
+
+            # Берём текущий глобальный шаг
+            current_step = trainer.state.global_step
+            emergency_checkpoint = os.path.join(CHECKPOINT_DIR, f"checkpoint-{current_step}")
+
             # Зберігаємо аварійний чекпоінт
-            emergency_checkpoint = os.path.join(CHECKPOINT_DIR, f"checkpoint-interrupted-epoch{epoch+1}")
+            #emergency_checkpoint = os.path.join(CHECKPOINT_DIR, f"checkpoint-interrupted-epoch{epoch+1}")
             os.makedirs(emergency_checkpoint, exist_ok=True)
             trainer.save_model(emergency_checkpoint)
             trainer.save_state()
