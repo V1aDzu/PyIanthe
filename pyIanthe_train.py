@@ -26,18 +26,16 @@ from modules.pyIanthe_test_callbacks import TestingCallback
 import pyIanthe_config as cfg
 
 if __name__ == "__main__":
-    # 0. Логи та debug
+    # 0. Логі та debug
     configure_runtime(cfg.DEBUG)
-    logger = setup_logging(
-        log_to_file=cfg.TRAINING_LOG_ENABLE,
-        log_file=os.path.join(cfg.BASE_DIR, cfg.TRAINING_LOG_FILENAME)
-    )
 
-    # 0. GPU / device
+    logger = setup_logging(cfg.TRAINING_LOG_ENABLE, os.path.join(cfg.BASE_DIR, cfg.TRAINING_LOG_FILENAME))
+
+    # 1. GPU / device
     device, fp16, bf16, pin_memory, num_gpus, attn_impl = get_device_config(cfg, logger)
     num_workers = get_num_workers(cfg, logger)
 
-    # 1. Папки
+    # 2. Папки
     CHECKPOINT_DIR = os.path.join(cfg.BASE_DIR, cfg.FOLDER_CHECKPOINTS)
     MAIN_MODEL_DIR = os.path.join(cfg.BASE_DIR, cfg.FOLDER_MODEL)
     REPORTS_DIR = os.path.join(cfg.BASE_DIR, cfg.FOLDER_REPORTS)
@@ -46,7 +44,7 @@ if __name__ == "__main__":
     os.makedirs(REPORTS_DIR, exist_ok=True)
     LAST_CHECKPOINT = get_last_checkpoint(CHECKPOINT_DIR)
 
-    # 2. Навчання
+    # 3. Навчання
     EPOCHS = 3
     PER_DEVICE_BATCH_SIZE = cfg.PER_DEVICE_BATCH_SIZE
     CONTEXT_LENGTH = cfg.CONTEXT_LENGTH

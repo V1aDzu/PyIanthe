@@ -4,6 +4,7 @@ import sys
 import logging
 
 def configure_runtime(debug: bool = False):
+    """Налаштовує рівень відладочних повідомлень"""
     if not debug:
         import warnings
         warnings.filterwarnings("ignore")
@@ -21,7 +22,7 @@ def configure_runtime(debug: bool = False):
     else:
         print("[INFO] DEBUG режим увімкнено, всі warnings показуються")
 
-def setup_logging(log_to_file: bool = True, log_file: str | None = None, level: int = logging.INFO):
+def setup_logging(log_to_file = True, log_file = None, level = logging.INFO):
     """Налаштовує логування у файл якщо log_to_file=True та завджи у консоль"""
       
     # Створюємо logger

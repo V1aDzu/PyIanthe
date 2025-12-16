@@ -25,9 +25,6 @@ FOLDER_CHECKPOINTS = "checkpoints"
 FOLDER_REPORTS = "reports"
 FOLDER_MODEL = "model"
 
-EPOCH_LRS = [4e-4, 2e-4, 1e-4]
-EPOCH_SAVE_STEPS = [5, 250, 500]  # приклад
-
 # --- ФАЙЛИ МОДЕЛІ ---
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 CORPUS_DATA_FILENAME = "config/datasets.json"
@@ -38,14 +35,14 @@ EMBEDDING_DIM = 896
 NUM_LAYERS = 10
 HEADS = 14
 
-# --- РЕЖИМ ТРЕНУВАННЯ ---
-TRAINING_MODE = "epochs"        # "steps" | "epochs"
-MAX_STEPS = -1                  # якщо steps -1 = без обмеження
-EPOCHS = 2                      # якщо epochs
-TRAIN_OUTPUT_INFO = True
-TRAIN_OUTPUT_STEPS = 3
-
 # --- НАЛАШТУВАННЯ ТРЕНУВАННЯ ---
+EPOCHS = 2                          # кількість епох тренування
+EPOCH_LRS = [4e-4, 2e-4, 1e-4]
+EPOCH_SAVE_STEPS = [5, 250, 500]    # кількість шагів між збереженням чекпоінтів
+TRAIN_OUTPUT_INFO = True        # відображення повідомлень щодо тренування
+TRAIN_OUTPUT_STEPS = 3          # як часто будуть відображатись повідомлення щодо тренування
+
+# --- НАЛАШТУВАННЯ ЗБЕРЕЖЕННЯ ---
 SAVE_STEPS = 5
 SAVE_LIMIT = 3
 
