@@ -25,6 +25,9 @@ FOLDER_CHECKPOINTS = "checkpoints"
 FOLDER_REPORTS = "reports"
 FOLDER_MODEL = "model"
 
+EPOCH_LRS = [4e-4, 2e-4, 1e-4]
+EPOCH_SAVE_STEPS = [5, 250, 500]  # приклад
+
 # --- ФАЙЛИ МОДЕЛІ ---
 MODEL_ID = "Qwen/Qwen2.5-0.5B-Instruct"
 CORPUS_DATA_FILENAME = "config/datasets.json"

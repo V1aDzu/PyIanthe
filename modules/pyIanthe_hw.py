@@ -33,8 +33,7 @@ def get_device_config(config=None, logger=None):
     return device, fp16, bf16, pin_memory, num_gpus, attn_impl
 
 
-def get_num_workers(
-    *,
+def get_num_workers(    
     config,
     logger: logging.Logger
 ) -> int:
