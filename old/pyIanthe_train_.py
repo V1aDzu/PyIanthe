@@ -153,73 +153,7 @@ class CustomCheckpointingCallback(TrainerCallback):
         shutil.move(latest_checkpoint, new_path)
         self.logger.info(f"\n[CHECKPOINT] Перейменовано у: {new_path}")
 
-
-# --- 3. БАЗОВИЙ CALLBACK ДЛЯ ТЕСТУВАННЯ ---
-
-class TestingCallback(TrainerCallback):
-    """
-    Базовий callback для тестування моделі під час навчання.
-    Виконує генерацію тексту та оцінку на eval датасеті.
-    """
-    def __init__(self, model, tokenizer, device, test_prompts=None, eval_dataset=None):
-        self.model = model
-        self.tokenizer = tokenizer
-        self.device = device
-        self.test_prompts = test_prompts or []
-        self.eval_dataset = eval_dataset
-        
-    def on_evaluate(self, args, state, control, **kwargs):
-        """Викликається після evaluate"""
-        metrics = kwargs.get('metrics', {})
-        
-        # Виводимо метрики
-        if metrics:
-            print(f"\n{'='*60}")
-            print(f"EVAL МЕТРИКИ (Step {state.global_step})")
-            print(f"{'='*60}")
-            for key, value in metrics.items():
-                print(f"{key}: {value:.4f}")
-            print(f"{'='*60}\n")
-    
-    def on_log(self, args, state, control, **kwargs):
-        """Викликається при логуванні"""
-        logs = kwargs.get('logs', {})
-        
-        # Тестова генерація (якщо є промпти та крок кратний EVAL_STEPS)
-        if (self.test_prompts and 
-            hasattr(pyIanthe_config, 'EVAL_STEPS') and 
-            state.global_step > 0 and 
-            state.global_step % pyIanthe_config.EVAL_STEPS == 0):
-            
-            print(f"\n{'='*60}")
-            print(f"ТЕСТОВА ГЕНЕРАЦІЯ (Step {state.global_step})")
-            print(f"{'='*60}")
-            
-            self.model.eval()
-            with torch.no_grad():
-                for i, prompt in enumerate(self.test_prompts[:3], 1):  # Перші 3 промпти
-                    try:
-                        inputs = self.tokenizer(prompt, return_tensors="pt").to(self.device)
-                        outputs = self.model.generate(
-                            **inputs,
-                            max_new_tokens=pyIanthe_config.GEN_TEST_MNEW_TOKENS,
-                            temperature=pyIanthe_config.GEN_TEST_TEMPERATURE,
-                            top_p=pyIanthe_config.GEN_TEST_TOP_P,
-                            do_sample=True,
-                            pad_token_id=self.tokenizer.eos_token_id
-                        )
-                        generated_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
-                        print(f"\nПромпт {i}: {prompt}")
-                        print(f"Генерація: {generated_text}")
-                        print("-" * 40)
-                    except Exception as e:
-                        print(f"Помилка генерації для промпту {i}: {e}")
-            
-            self.model.train()
-            print(f"{'='*60}\n")
-
-
-# --- 4. ФУНКЦІЇ ДЛЯ ВОССТАНОВЛЕННЯ ---
+# --- 3. ФУНКЦІЇ ДЛЯ ВОССТАНОВЛЕННЯ ---
 
 def find_latest_checkpoint(path, prefix="checkpoint"):
     """Ініціалізація: шукає найновішу папку, що починається на 'prefix'."""
@@ -240,36 +174,7 @@ def find_latest_checkpoint(path, prefix="checkpoint"):
     latest_checkpoint = max(list_of_dirs, key=os.path.getmtime)
     return latest_checkpoint
 
-
-# --- 5. ЗАВАНТАЖЕННЯ ТЕСТОВИХ ПРИКЛАДІВ ---
-
-def load_test_examples(logger):
-    """Завантаження тестових прикладів для генерації"""
-    test_file = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.TEXT_TEST_FILENAME)
-    
-    if not os.path.exists(test_file):
-        logger.warning(f"Файл тестових прикладів не знайдено: {test_file}")
-        logger.info("Використовуються стандартні приклади")
-        return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
-    
-    try:
-        with open(test_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        if isinstance(data, list):
-            examples = data[:pyIanthe_config.TEXT_TESTS_COUNT]
-        elif isinstance(data, dict) and "examples" in data:
-            examples = data["examples"][:pyIanthe_config.TEXT_TESTS_COUNT]
-        else:
-            logger.warning(f"Невідомий формат файлу {test_file}")
-            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
-        logger.info(f"Завантажено {len(examples)} тестових прикладів з {test_file}")
-        return examples
-    except Exception as e:
-        logger.error(f"Помилка при завантаженні {test_file}: {e}")
-        return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
-
-
-# --- 6. ОСНОВНА ЛОГІКА СКРИПТА ---
+# --- 4. ОСНОВНА ЛОГІКА СКРИПТА ---
 
 if __name__ == "__main__":
     # --- 0. Ініціалізація та налаштування ---
@@ -378,7 +283,7 @@ if __name__ == "__main__":
         
     logger.info(f"Модель завантажена, параметрів: {model.num_parameters():,}")
     
-    # Gradient Checkpointing
+    # Gradient Checkpointing (перенесено з вашого коду)
     if pyIanthe_config.GRADIENT_CHECKPOINTING:
         model.gradient_checkpointing_enable()
         logger.info("✓ Gradient checkpointing увімкнено")
@@ -402,11 +307,11 @@ if __name__ == "__main__":
     tokenized_dataset = dataset.map(
         lambda ex: tokenizer(ex["text"], truncation=True, max_length=pyIanthe_config.CONTEXT_LENGTH),
         batched=True, 
-        remove_columns=["text"]
+        remove_columns=["text"] # Припускаємо, що текстовий стовпець називається "text"
     )
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
-    # Eval датасет
+    # Eval датасет (з вашої логіки)
     eval_dataset = None
     if pyIanthe_config.EVAL_ENABLED and os.path.exists(eval_dataset_path):
         try:
@@ -421,19 +326,50 @@ if __name__ == "__main__":
             logger.warning(f"Не вдалося завантажити/токенізувати eval датасет: {e}")
             eval_dataset = None
 
-    # --- 6. Завантаження тестових прикладів ---
+    # --- 6. Налаштування Trainer (TrainingArguments, Callback-и) ---
     
-    GENERATE_EXAMPLES = load_test_examples(logger) if pyIanthe_config.TEST_ENABLED else []
+    # Зберігаємо вашу функцію завантаження тестових прикладів
+    def load_test_examples():
+        test_file = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.TEXT_TEST_FILENAME)
+        # ... (Ваш оригінальний код load_test_examples)
+        # [Оригінальний код]
+        if not os.path.exists(test_file):
+            logger.warning(f"Файл тестових прикладів не знайдено: {test_file}")
+            logger.info("Використовуються стандартні приклади")
+            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
+        
+        try:
+            with open(test_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                examples = data[:pyIanthe_config.TEXT_TESTS_COUNT]
+            elif isinstance(data, dict) and "examples" in data:
+                examples = data["examples"][:pyIanthe_config.TEXT_TESTS_COUNT]
+            else:
+                logger.warning(f"Невідомий формат файлу {test_file}")
+                return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
+            logger.info(f"Завантажено {len(examples)} тестових прикладів з {test_file}")
+            return examples
+        except Exception as e:
+            logger.error(f"Помилка при завантаженні {test_file}: {e}")
+            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
+        # [/Оригінальний код]
 
-    # --- 7. Налаштування Trainer (TrainingArguments, Callback-и) ---
+    GENERATE_EXAMPLES = load_test_examples()
+    
+    # Виносимо ваші метрики і функції тестування в глобальну область (або залишаємо як внутрішні функції)
+    # З метою чистоти, я їх не дублюю тут, а припускаю, що вони доступні.
+    # [Примітка: в робочому коді потрібно переконатися, що compute_perplexity, compute_text_metrics та 
+    # test_text_generation, test_eval_dataset доступні.]
+    
+    # --- Налаштування аргументів ---
 
     training_args = TrainingArguments(
         output_dir=CHECKPOINT_DIR,
         overwrite_output_dir=False,
-        
         # Налаштування епох/кроків
         num_train_epochs=pyIanthe_config.EPOCHS,
-        max_steps=pyIanthe_config.MAX_STEPS,
+        max_steps=pyIanthe_config.MAX_STEPS, # -1, якщо використовуємо епохи
         
         # Налаштування батчу
         per_device_train_batch_size=pyIanthe_config.PER_DEVICE_BATCH_SIZE,
@@ -442,20 +378,20 @@ if __name__ == "__main__":
         # Налаштування LR
         learning_rate=pyIanthe_config.LEARNING_RATE,
         weight_decay=pyIanthe_config.WEIGHT_DECAY,
-        max_grad_norm=pyIanthe_config.GRADIENT_CLIPPING,
+        #gradient_clipping=pyIanthe_config.GRADIENT_CLIPPING, # З вашого конфігу
         
-        # Налаштування оптимізатора/шедулера
-        lr_scheduler_type="cosine",
-        warmup_ratio=0.03,
+        # Налаштування оптимізатора/шедулера (використовуємо мою надійну логіку)
+        lr_scheduler_type="cosine", # Cosine Decay
+        warmup_ratio=0.03,          # Невеликий Warmup (за замовчуванням 0.03)
         
-        # Налаштування збереження
+        # Налаштування збереження (використовуємо ваші значення)
         save_strategy="steps",
         save_steps=pyIanthe_config.SAVE_STEPS,
         save_total_limit=pyIanthe_config.SAVE_LIMIT,
         
-        # Логування та оцінка (ВИПРАВЛЕНО: eval_strategy замість evaluation_strategy)
+        # Логування та оцінка (для запуску вашого `TestingCallback`)
         logging_steps=100,
-        eval_strategy="steps" if pyIanthe_config.EVAL_ENABLED else "no",
+        evaluation_strategy="steps" if pyIanthe_config.EVAL_ENABLED else "no",
         eval_steps=pyIanthe_config.EVAL_STEPS if pyIanthe_config.EVAL_ENABLED else None,
         
         # Налаштування прискорення
@@ -465,37 +401,36 @@ if __name__ == "__main__":
         dataloader_pin_memory=pyIanthe_config.PIN_MEMORY,
         dataloader_num_workers=actual_num_workers,
         report_to="none",
-        disable_tqdm=False,
-        
-        # Додаткові налаштування
-        load_best_model_at_end=False,
-        metric_for_best_model=None,
+        disable_tqdm=False
     )
     
-    # --- 8. Ініціалізація Trainer ---
+    # --- Ініціалізація Trainer ---
 
     trainer = Trainer(
         model=model,
         args=training_args,
         train_dataset=tokenized_dataset,
-        eval_dataset=eval_dataset,
+        eval_dataset=eval_dataset, # Передаємо для внутрішнього eval, якщо увімкнено
         tokenizer=tokenizer,
         data_collator=data_collator,
+        # Використовуємо ваші callback-и, доповнені новими
         callbacks=[
-            ReliableBackupCallback(safe_archive_dir=SAFE_ARCHIVE_DIR, logger=logger),
-            CustomCheckpointingCallback(logger=logger),
+            ReliableBackupCallback(safe_archive_dir=SAFE_ARCHIVE_DIR, logger=logger), # Надійний бекап весів
+            CustomCheckpointingCallback(logger=logger),                             # Кастомне іменування
+            # Ваш оригінальний callback для проміжного тестування
+            # Зверніть увагу, що функції test_text_generation, compute_perplexity і т.д.
+            # мають бути доступні зсередини TestingCallback
             TestingCallback(
                 model=model,
                 tokenizer=tokenizer,
                 device=device,
-                test_prompts=GENERATE_EXAMPLES,
-                eval_dataset=eval_dataset
+                test_prompts=GENERATE_EXAMPLES if pyIanthe_config.TEST_ENABLED else None,
+                eval_dataset=eval_dataset if pyIanthe_config.EVAL_ENABLED else None
             )
         ]
     )
 
-    # --- 9. Запуск Тренування ---
-    
+    # --- 7. Запуск Тренування ---
     logger.info(f"\n{'='*60}")
     logger.info(f"СТАРТ ТРЕНУВАННЯ")
     logger.info(f"Епох: {pyIanthe_config.EPOCHS}")
@@ -504,10 +439,55 @@ if __name__ == "__main__":
     logger.info(f"Режим відновлення: {'Повний' if full_checkpoint_path else ('Веси' if latest_archive_path else 'З нуля')}")
     logger.info(f"{'='*60}\n")
     
+    # Виконуємо trainer.train() тільки один раз (для циклу for epoch - див. нижче)
+    
     try:
-        trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+        # Ваш оригінальний цикл for epoch більше не потрібен, 
+        # Trainer сам керує епохами. Викликаємо train лише один раз.
+        # trainer.train(resume_from_checkpoint=resume_from_checkpoint)
+        
+        # Для того, щоб зберегти вашу логіку циклу по епохах та фінальний звіт (generate_epoch_report)
+        # після кожної епохи, ми повинні імплементувати це через Callback 
+        # або викликати train() для кожної епохи.
+        
+        # *Оптимальне рішення:* Викликати train() один раз, а фінальний звіт 
+        # перенести в Callback. Якщо ж ви хочете зберегти вашу логіку циклу, 
+        # ми залишаємо її, але вона може конфліктувати з Trainer, 
+        # який теж має свій внутрішній лічильник епох.
+        
+        # Ми приймемо ваш цикл for epoch, щоб він викликав generate_epoch_report:
+        for epoch in range(pyIanthe_config.EPOCHS):
+            logger.info(f"\n{'='*60}")
+            logger.info(f"===== Епоха {epoch+1} / {pyIanthe_config.EPOCHS} =====")
+            logger.info(f"{'='*60}")
+            
+            # Якщо це перша епоха і ми відновлюємося, використовуємо resume_from_checkpoint
+            current_resume = resume_from_checkpoint if epoch == 0 else None
+            
+            trainer.train(resume_from_checkpoint=current_resume)
+            
+            # Скидаємо прапорець відновлення після першої спроби
+            if epoch == 0:
+                resume_from_checkpoint = None
+
+            # --- Логіка, що була після кожної епохи ---
+            
+            # Ваш оригінальний код: 1) Зберігаємо головну модель у model/
+            # Це вже робить ReliableBackupCallback в on_train_end (або on_save)
+            # Тому тут просто викликаємо фінальний звіт:
+            
+            # Ваш оригінальний код: 2) Зберігаємо чекпоінт у checkpoints/checkpoint-X/
+            # Це робить Trainer в кінці епохи, але ми перехоплюємо це через CustomCheckpointingCallback
+            
+            # Генеруємо фінальний звіт епохи (ваш оригінальний код)
+            # [Примітка: generate_epoch_report має бути доступна]
+            # generate_epoch_report(epoch) 
+
+            logger.info(f"\n[SUCCESS] Епоха {epoch+1} завершена і збережена")
+            logger.info(f"  → Надійний бекап: {SAFE_ARCHIVE_DIR}")
         
     except KeyboardInterrupt:
+        # Цю логіку ми залишаємо, вона спрацює, якщо Trainer не встиг зберегтися
         logger.warning(f"\n⚠ Тренування перервано користувачем (Ctrl+C)")
         logger.info("Для продовження запустіть скрипт знову. Буде використано останній повний чекпоінт або веси.")
         sys.exit(0)

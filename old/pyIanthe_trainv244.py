@@ -4,6 +4,7 @@ import sys
 import json
 import torch
 import shutil
+import logging
 import platform
 from datetime import datetime
 from transformers import (
@@ -16,8 +17,73 @@ from transformers import (
     TrainerCallback
 )
 from datasets import load_from_disk
-from modules.pyIanthe_log import setup_logging, configure_runtime
 import pyIanthe_config
+
+# ==================== НАЛАШТУВАННЯ WARNINGS ====================
+if not pyIanthe_config.DEBUG:
+    import warnings
+    warnings.filterwarnings("ignore")
+    
+    import logging as std_logging
+    std_logging.getLogger("transformers").setLevel(std_logging.ERROR)
+    std_logging.getLogger("transformers.modeling_utils").setLevel(std_logging.ERROR)
+    std_logging.getLogger("transformers.configuration_utils").setLevel(std_logging.ERROR)
+    std_logging.getLogger("transformers.modeling_tf_utils").setLevel(std_logging.ERROR)
+    
+    from transformers import logging as transformers_logging
+    transformers_logging.set_verbosity_error()
+    
+    print("[INFO] DEBUG режим вимкнено, warnings приховані")
+else:
+    print("[INFO] DEBUG режим увімкнено, всі warnings показуються")
+# ================================================================
+
+# ==================== НАЛАШТУВАННЯ ЛОГУВАННЯ ====================
+def setup_logging(log_to_file: bool = True, log_file: str | None = None, level: int = logging.INFO):
+    """Налаштовує логування у файл якщо log_to_file=True та завджи у консоль"""
+      
+    # Створюємо logger
+    logger = logging.getLogger('training')
+    logger.setLevel(level)
+    
+    # Видаляємо старі handlers якщо є
+    logger.handlers.clear()
+    logger.propagate = False
+
+    # Handler для консолі
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(level)
+    console_formatter = logging.Formatter('%(message)s')
+    console_handler.setFormatter(console_formatter)
+    logger.addHandler(console_handler)
+  
+    if log_to_file:
+        if log_file is None:
+            raise ValueError(
+                "log_file must be provided when log_to_file=True"
+            )
+
+        os.makedirs(os.path.dirname(log_file), exist_ok=True)
+
+        file_handler = logging.FileHandler(
+            log_file,
+            mode="a",
+            encoding="utf-8",
+        )
+        file_handler.setLevel(level)
+
+    # Handler для файлу
+    if log_to_file:
+        if log_file is None:
+            raise ValueError("log_file must be provided when log_to_file=True")
+        file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+        file_handler.setLevel(level)
+        file_formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(file_formatter) 
+        logger.addHandler(file_handler)
+
+    return logger
+# ================================================================
 
 # ==================== ВИЗНАЧЕННЯ NUM_WORKERS ====================
 def get_num_workers():
@@ -51,10 +117,7 @@ def get_num_workers():
 # ================================================================
 
 if __name__ == "__main__":
-    # 0. Включаємо Debug повідомлення та ведення логів
-
-    configure_runtime(pyIanthe_config.DEBUG)
-    
+    # 0. Включаємо ведення логів
     logger = setup_logging(
         log_to_file=pyIanthe_config.TRAINING_LOG_ENABLE,
         log_file=os.path.join(
@@ -63,7 +126,7 @@ if __name__ == "__main__":
         )
     )
 
-    # 0. GPU та налаштування
+    # 1. GPU та налаштування
     device = "cuda" if torch.cuda.is_available() else "cpu"    
     fp16 = pyIanthe_config.FP16 if device == "cuda" else False
     bf16 = pyIanthe_config.BF16 if device == "cuda" else False
@@ -83,7 +146,7 @@ if __name__ == "__main__":
     # Визначаємо фактичну кількість воркерів
     actual_num_workers = get_num_workers()
 
-    # 1. Папки
+    # 2. Папки
     CHECKPOINT_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_CHECKPOINTS)
     MAIN_MODEL_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_MODEL)
     REPORTS_DIR = os.path.join(pyIanthe_config.BASE_DIR, pyIanthe_config.FOLDER_REPORTS)
@@ -111,20 +174,32 @@ if __name__ == "__main__":
     last_checkpoint = get_last_checkpoint()
 
     # 2. Конфігурація навчання
-    EPOCHS = pyIanthe_config.EPOCHS
     LEARNING_RATE = pyIanthe_config.LEARNING_RATE
     PER_DEVICE_BATCH_SIZE = pyIanthe_config.PER_DEVICE_BATCH_SIZE
     CONTEXT_LENGTH = pyIanthe_config.CONTEXT_LENGTH
+    if pyIanthe_config.TRAINING_MODE == "steps":
+        USE_STEPS = True
+        USE_EPOCHS = False
+        num_train_epochs = 1
+        max_train_steps = pyIanthe_config.MAX_STEPS
+        logger.info(f"[TRAIN MODE] step-based, max_steps={max_train_steps}")
+
+    elif pyIanthe_config.TRAINING_MODE == "epochs":
+        USE_EPOCHS = True
+        USE_STEPS = False
+        num_train_epochs = pyIanthe_config.EPOCHS
+        max_train_steps = -1
+        logger.info(f"[TRAIN MODE] epoch-based, epochs={num_train_epochs}")
+    else:
+        raise ValueError("Unknown TRAINING_MODE")
+        logger.info(f"[CONFIG ERROR] TRAINING_MODE='{pyIanthe_config.TRAINING_MODE}' неприпустимий! \n")
+        sys.exit(1)
+
+    EPOCHS = pyIanthe_config.EPOCHS
     SAVE_STEPS = pyIanthe_config.SAVE_STEPS
+    MAX_STEPS = max_train_steps
 
-    TRAINING_CONFIG = {
-        "max_new_tokens": 50,
-        "temperature": 0.8,
-        "top_p": 0.9,
-        "num_train_epochs": EPOCHS
-    }
-
-    # 3. Завантаження датасету
+    # 3. Завантаження датасетів
     train_dataset_path = pyIanthe_config.FOLDER_TRAIN_DATASET
     if not os.path.exists(train_dataset_path):
         logger.error(f"Папка датасету не знайдена: {train_dataset_path}")
@@ -165,29 +240,15 @@ if __name__ == "__main__":
 
     # 5. Завантаження моделі
     vocab_size = len(tokenizer)
-    checkpoint_has_model = last_checkpoint and os.path.exists(os.path.join(last_checkpoint, "model.safetensors"))
-    main_model_exists = os.path.exists(os.path.join(MAIN_MODEL_DIR, "model.safetensors"))
 
-    if checkpoint_has_model:
-        logger.info(f"Знайдено чекпоінт з моделлю: {last_checkpoint}")
-        logger.info("Завантажуємо модель з чекпоінта (навчання продовжиться)")
-        model = AutoModelForCausalLM.from_pretrained(
-                last_checkpoint,
-                ignore_mismatched_sizes=False,
-                local_files_only=True,
-                attn_implementation=attn_impl  # аттеншен
-            ).to(device)
-        if hasattr(model, 'tie_weights'):
-            model.tie_weights()
-            logger.info("✓ Прив'язані ваги lm_head оновлено")
-        resume_from = last_checkpoint
+    main_model_exists = os.path.exists(os.path.join(MAIN_MODEL_DIR, "model.safetensors"))
         
-    elif main_model_exists:
-        logger.info(f"Чекпоінта немає, але знайдено модель у: {MAIN_MODEL_DIR}")
+    if main_model_exists:
+        logger.info(f"Модель знайдено у {MAIN_MODEL_DIR}")
         logger.info("Завантажуємо модель (optimizer почнеться з нуля)")
         model = AutoModelForCausalLM.from_pretrained(
                 MAIN_MODEL_DIR,
-                ignore_mismatched_sizes=False,
+                ignore_mismatched_sizes=True,
                 local_files_only=True,
                 attn_implementation=attn_impl  # аттеншен
             ).to(device)
@@ -197,7 +258,7 @@ if __name__ == "__main__":
         resume_from = None
         
     else:
-        logger.info("Не знайдено ні чекпоінта, ні моделі")
+        logger.info("Не знайдено моделі")
         logger.info("Створюємо нову модель з конфігурації GPT2")
         config = GPT2Config(
             vocab_size=vocab_size,
@@ -208,8 +269,8 @@ if __name__ == "__main__":
             n_head=pyIanthe_config.HEADS,
             use_cache=False,
             pad_token_id=tokenizer.eos_token_id,
-            tie_word_embeddings=True,
-            loss_type=None,
+            tie_word_embeddings=True
+            #loss_type=None,
         )
         model = AutoModelForCausalLM.from_config(
                 config,
@@ -233,7 +294,7 @@ if __name__ == "__main__":
     if pyIanthe_config.GRADIENT_CHECKPOINTING:
         model.gradient_checkpointing_enable()
         logger.info("✓ Gradient checkpointing увімкнено")
-        logger.info("  → Можна збільшити batch size")
+
     # 6. Завантаження тестових прикладів
     def load_test_examples():
         """Завантажує тестові приклади з JSON файлу"""
@@ -242,8 +303,8 @@ if __name__ == "__main__":
         if not os.path.exists(test_file):
             logger.warning(f"Файл тестових прикладів не знайдено: {test_file}")
             logger.info("Використовуються стандартні приклади")
-            return ["Привіт, як справи?", "Одного разу", "Швидка коричнева лисиця"]
-        
+            return ["Hello, how are you?", "Привіт, як справи?", "Привіт, як ся маєшь?"]
+
         try:
             with open(test_file, "r", encoding="utf-8") as f:
                 data = json.load(f)
@@ -287,15 +348,15 @@ if __name__ == "__main__":
         perc_meaningful = meaningful_tokens / total_tokens * 100 if total_tokens else 0
         return total_tokens, perc_meaningful
 
-    def test_text_generation(model, tokenizer, prompts, device):
+    def test_text_generation(model, tokenizer, prompts, device, max_new_tokens, temperature, top_p):
         """Тестує генерацію тексту на прикладах"""
         model.eval()
         results = {}
         
         generation_config = {
-            "max_new_tokens": TRAINING_CONFIG["max_new_tokens"],
-            "temperature": TRAINING_CONFIG["temperature"],
-            "top_p": TRAINING_CONFIG["top_p"],
+            "max_new_tokens": max_new_tokens,
+            "temperature": temperature,
+            "top_p": top_p,
             "do_sample": True,
             "pad_token_id": tokenizer.eos_token_id
         }
@@ -345,8 +406,7 @@ if __name__ == "__main__":
                     if not text or not isinstance(text, str):
                         continue
                     
-                    inputs = tokenizer(text, return_tensors="pt", truncation=True, 
-                                     max_length=CONTEXT_LENGTH).to(device)
+                    inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=CONTEXT_LENGTH).to(device)
                     
                     outputs = model(**inputs, labels=inputs["input_ids"])
                     loss = outputs.loss.item()
@@ -422,7 +482,7 @@ if __name__ == "__main__":
             if pyIanthe_config.TEST_ENABLED and self.test_prompts:
                 logger.info("\n[TEST] Тестування генерації тексту...")
                 text_results = test_text_generation(
-                    self.model, self.tokenizer, self.test_prompts, self.device
+                    self.model, self.tokenizer, self.test_prompts, self.device, pyIanthe_config.GEN_TEST_MNEW_TOKENS, pyIanthe_config.GEN_TEST_TEMPERATURE, pyIanthe_config.GEN_TEST_TOP_P
                 )
                 test_results["text_generation"] = text_results
                 
@@ -473,26 +533,7 @@ if __name__ == "__main__":
     logger.info(f"  Gradient accumulation steps: {pyIanthe_config.GRADIENT_ACCUMULATION_STEPS}")
     logger.info(f"  Number of GPUs: {max(1, num_gpus)}")
     logger.info(f"  Num workers: {actual_num_workers}")
-    logger.info(f"  → Effective batch size: {effective_batch_size}")
-    
-    training_args = TrainingArguments(
-        output_dir=CHECKPOINT_DIR,
-        overwrite_output_dir=False,
-        num_train_epochs=1,
-        per_device_train_batch_size=PER_DEVICE_BATCH_SIZE,
-        gradient_accumulation_steps=pyIanthe_config.GRADIENT_ACCUMULATION_STEPS,
-        save_steps=SAVE_STEPS,
-        save_total_limit=pyIanthe_config.SAVE_LIMIT,
-        logging_steps=100,  # Частіше логувати для моніторингу
-        learning_rate=LEARNING_RATE,
-        weight_decay=pyIanthe_config.WEIGHT_DECAY,
-        fp16=fp16,
-        bf16=bf16,
-        dataloader_pin_memory=pin_memory,
-        dataloader_num_workers=actual_num_workers,
-        report_to="none",
-        disable_tqdm=False
-    )
+    logger.info(f"  Effective batch size: {effective_batch_size}")
 
     # Створюємо callback
     testing_callback = TestingCallback(
@@ -503,13 +544,97 @@ if __name__ == "__main__":
         eval_dataset=eval_dataset if pyIanthe_config.EVAL_ENABLED else None
     )
 
-    trainer = Trainer(
-        model=model,
-        args=training_args,
-        train_dataset=tokenized_dataset,
-        data_collator=data_collator,
-        callbacks=[testing_callback]  # Додаємо callback
-    )
+    if USE_STEPS:
+        training_args = TrainingArguments(
+            output_dir= MAIN_MODEL_DIR,
+            overwrite_output_dir=False,
+            num_train_epochs=1,
+            per_device_train_batch_size=PER_DEVICE_BATCH_SIZE,
+            gradient_accumulation_steps=pyIanthe_config.GRADIENT_ACCUMULATION_STEPS,
+            save_steps=None,
+            save_total_limit=0,
+            logging_steps=100,  # Частіше логувати для моніторингу
+            learning_rate=LEARNING_RATE,
+            weight_decay=pyIanthe_config.WEIGHT_DECAY,
+            fp16=fp16,
+            bf16=bf16,
+            dataloader_pin_memory=pin_memory,
+            dataloader_num_workers=actual_num_workers,
+            report_to="none",
+            disable_tqdm=False
+        )
+
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=tokenized_dataset,
+            data_collator=data_collator,
+            callbacks=[testing_callback]  # Додаємо callback
+        )
+    else:
+        training_args = TrainingArguments(
+            output_dir=CHECKPOINT_DIR,
+            overwrite_output_dir=False,
+            num_train_epochs=EPOCHS,
+            per_device_train_batch_size=PER_DEVICE_BATCH_SIZE,
+            gradient_accumulation_steps=pyIanthe_config.GRADIENT_ACCUMULATION_STEPS,
+            save_steps=SAVE_STEPS,
+            save_total_limit=pyIanthe_config.SAVE_LIMIT,
+            logging_steps=100,  # Частіше логувати для моніторингу
+            learning_rate=LEARNING_RATE,
+            weight_decay=pyIanthe_config.WEIGHT_DECAY,
+            fp16=fp16,
+            bf16=bf16,
+            dataloader_pin_memory=pin_memory,
+            dataloader_num_workers=actual_num_workers,
+            report_to="none",
+            disable_tqdm=False
+        )
+
+        trainer = Trainer(
+            model=model,
+            args=training_args,
+            train_dataset=tokenized_dataset,
+            data_collator=data_collator,
+            callbacks=[testing_callback]  # Додаємо callback
+        )
+
+    # 10. Функція для фінального звіту після епохи
+    def generate_epoch_report(epoch_index):
+        """Генерує детальний звіт після завершення епохи"""
+        model.eval()
+        report = {}
+        
+        logger.info(f"\n[REPORT] Генерація звіту по епосі {epoch_index+1}...")
+        
+        for prompt in GENERATE_EXAMPLES:
+            inputs = tokenizer(prompt, return_tensors="pt").to(device)
+            with torch.no_grad():
+                outputs = model.generate(
+                    **inputs,
+                    max_new_tokens=pyIanthe_config.GEN_TEST_MNEW_TOKENS,
+                    temperature=pyIanthe_config.GEN_TEST_TEMPERATURE,
+                    top_p=pyIanthe_config.GEN_TEST_TOP_P,
+                    do_sample=True,
+                    pad_token_id=tokenizer.eos_token_id
+                )
+                text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                avg_len, perc_meaningful = compute_text_metrics(text)
+                logits = model(**inputs).logits
+                ppl = compute_perplexity(logits, inputs["input_ids"])
+                report[prompt] = {
+                    "text": text,
+                    "perplexity": ppl,
+                    "avg_length": avg_len,
+                    "perc_meaningful_tokens": perc_meaningful
+                }
+        
+        report_file = os.path.join(REPORTS_DIR, f"report_epoch_{epoch_index+1}.json")
+        with open(report_file, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        
+        logger.info(f"✓ Звіт по епосі {epoch_index+1} збережено: {report_file}")
+        model.train()
 
     # 11. Тренування
     logger.info(f"\n{'='*60}")
@@ -518,52 +643,54 @@ if __name__ == "__main__":
     logger.info(f"Тестування: {'Увімкнено' if pyIanthe_config.TEST_ENABLED else 'Вимкнено'}")
     logger.info(f"Eval: {'Увімкнено' if pyIanthe_config.EVAL_ENABLED else 'Вимкнено'}")
     if pyIanthe_config.TEST_ENABLED or pyIanthe_config.EVAL_ENABLED:
-        logger.info(f"Частота тестів: кожні {pyIanthe_config.EVAL_STEPS} кроків")
+        logger.info(f"Частота текстових тестів: кожні {pyIanthe_config.TEST_STEPS} кроків")
+        logger.info(f"Частота eval() тестів: кожні {pyIanthe_config.EVAL_STEPS} кроків")
     logger.info(f"{'='*60}\n")
     
-    for epoch in range(EPOCHS):
-        logger.info(f"\n{'='*60}")
-        logger.info(f"===== Епоха {epoch+1} / {EPOCHS} =====")
-        logger.info(f"{'='*60}")
-        
-        # Оновлюємо епоху в callback
-        testing_callback.current_epoch = epoch + 1
-        
-        try:
-            # Тренуємо 1 епоху
-            if epoch == 0 and resume_from:
-                logger.info(f"Продовжуємо з чекпоінта: {resume_from}")
-                trainer.train(resume_from_checkpoint=resume_from)
+    current_step = 0
+    
+    if USE_STEPS:
+        # -- Навчання за кроками --
+        if pyIanthe_config.MAX_STEPS == -1:
+                logger.info(f"Навчання за кроками до кінця датасету")
             else:
+                logger.info(f"Навчання за кроками, макс кроків: {MAX_STEPS}")
+        current_step = 0
+
+        while current_step < MAX_STEPS:
+            try:
                 trainer.train()
-                
-        except KeyboardInterrupt:
-            logger.warning(f"\n⚠ Тренування перервано користувачем (Ctrl+C)")
-            logger.info("Зберігаємо поточний стан...")
-            
-            # Зберігаємо головну модель
-            if hasattr(model.config, 'tie_word_embeddings'):
-                model.config.tie_word_embeddings = True
-            model.save_pretrained(MAIN_MODEL_DIR)
-            tokenizer.save_pretrained(MAIN_MODEL_DIR)
-            logger.info(f"✓ Модель збережена у: {MAIN_MODEL_DIR}")
-            
-            # Зберігаємо аварійний чекпоінт
-            emergency_checkpoint = os.path.join(CHECKPOINT_DIR, f"checkpoint-interrupted-epoch{epoch+1}")
-            os.makedirs(emergency_checkpoint, exist_ok=True)
-            trainer.save_model(emergency_checkpoint)
-            trainer.save_state()
-            
-            for fname in ["trainer_state.json", "optimizer.pt", "scheduler.pt", "rng_state.pth", "scaler.pt"]:
-                src = os.path.join(CHECKPOINT_DIR, fname)
-                dst = os.path.join(emergency_checkpoint, fname)
-                if os.path.exists(src):
-                    shutil.copy2(src, dst)
-            
-            logger.info(f"✓ Аварійний чекпоінт: {emergency_checkpoint}")
-            logger.info("Для продовження запустіть скрипт знову")
-            sys.exit(0)
-        
+                current_step = trainer.state.global_step
+
+                if current_step % pyIanthe_config.SAVE_STEPS == 0:
+                    if hasattr(model.config, 'tie_word_embeddings'):
+                        model.config.tie_word_embeddings = True
+                    model.save_pretrained(MAIN_MODEL_DIR)
+                    tokenizer.save_pretrained(MAIN_MODEL_DIR)
+                    trainer.save_model(MAIN_MODEL_DIR)
+                    logger.info(f"✓ Збережена модель, токенайзер та додаткові файли")
+                    #save_checkpoint(trainer, model, tokenizer, MAIN_MODEL_DIR, CHECKPOINT_DIR, current_step)
+
+            except KeyboardInterrupt:
+                logger.warning("⚠ Тренировка зупинана користувачем")
+   
+                # Зберігаємо головну модель
+                if hasattr(model.config, 'tie_word_embeddings'):
+                    model.config.tie_word_embeddings = True
+                model.save_pretrained(MAIN_MODEL_DIR)
+                logger.info(f"✓ Модель збережена у: {MAIN_MODEL_DIR}")
+                tokenizer.save_pretrained(MAIN_MODEL_DIR)
+                logger.info(f"✓ Токенайзер збережено")
+                trainer.save_model(MAIN_MODEL_DIR)
+                logger.info(f"✓ Збережені trainer_state.json + optimizer.pt + scheduler.pt у {MAIN_MODEL_DIR}")
+                sys.exit(0)
+        else:
+            logger.info(f"⚠ Не реалізовано у даній версії, вихід!")
+            sys.exit(0)       
+
+    # ----------------------------
+    # Финальний вивід
+    # ----------------------------
     logger.info(f"\n{'='*60}")
     logger.info("[SUCCESS] ТРЕНУВАННЯ ЗАВЕРШЕНО!")
     logger.info(f"Всього епох: {EPOCHS}")
