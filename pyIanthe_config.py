@@ -54,8 +54,8 @@ GRADIENT_CLIPPING=1.0
 
 # --- НАЛАШТУВАННЯ GPU ТА ПРИСКОРЕННЯ ---    
 PER_DEVICE_BATCH_SIZE = 8       # базовий розмір батчу на GPU, зменшити якщо мало VRAM
-NUM_WORKERS = 4                 # кількість потоків на CPU
-WIN_WORKERS = True
+NUM_WORKERS = 0                 # кількість потоків на CPU
+WIN_WORKERS = False
 PIN_MEMORY = True               # прискорення на GPU
 BF16 = True                     # Ampere/Ada GPU
 FP16 = False                    # половинна точність на GPU
