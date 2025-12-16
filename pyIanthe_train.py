@@ -3,7 +3,6 @@ import os
 import sys
 import json
 import torch
-import shutil
 import numpy as np
 import random
 import math
@@ -51,14 +50,14 @@ if __name__ == "__main__":
     assert len(cfg.EPOCH_LRS) == EPOCHS, "Потрібно задати LR для всіх епох"
     assert len(cfg.EPOCH_SAVE_STEPS) == EPOCHS, "Потрібно задати save_steps для всіх епох"
 
-    # 3. Датасет
+    # 4. Датасет
     try:
         dataset, eval_dataset = load_datasets(cfg, logger)
     except Exception as e:
         logger.error(f"Помилка при завантаженні датасету: {e}")
         sys.exit(1)
 
-    # 4. Токенізатор
+    # 5. Токенізатор
     tokenizer_source_dir = os.path.join(cfg.FOLDER_MODELS, *cfg.MODEL_ID.split("/"))
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_source_dir, local_files_only=True)
     tokenizer.model_max_length = CONTEXT_LENGTH
@@ -72,7 +71,7 @@ if __name__ == "__main__":
     )
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
 
-    # 5. Модель
+    # 6. Модель
     vocab_size = len(tokenizer)
     main_model_exists = os.path.exists(os.path.join(MAIN_MODEL_DIR, "model.safetensors"))
     if main_model_exists:
@@ -102,15 +101,21 @@ if __name__ == "__main__":
         model.gradient_checkpointing_enable()
         logger.info("✓ Gradient checkpointing увімкнено")
 
-    # 6. Тестові приклади
+    # 7. Тестові приклади
     GENERATE_EXAMPLES = load_test_examples(logger, cfg.BASE_DIR, cfg.TEXT_TEST_FILENAME, cfg.TEXT_TESTS_COUNT)
+    
+    if cfg.TRAIN_OUTPUT_INFO:
+        logging_strategy="no"
+    else:
+        logging_strategy="steps"
 
-    # 7. Trainer базовий
+    # 8. Trainer базовий
     training_args = TrainingArguments(
         output_dir=CHECKPOINT_DIR,
         overwrite_output_dir=False,
         per_device_train_batch_size=PER_DEVICE_BATCH_SIZE,
         gradient_accumulation_steps=cfg.GRADIENT_ACCUMULATION_STEPS,
+        logging_strategy=logging_strategy,
         logging_steps=cfg.TRAIN_OUTPUT_STEPS,
         fp16=fp16,
         bf16=bf16,
@@ -118,7 +123,7 @@ if __name__ == "__main__":
         dataloader_pin_memory=pin_memory,
         report_to="none",
         disable_tqdm=False,
-        save_total_limit=3,  # <-- зберігати лише 3 останні чекпоінти
+        save_total_limit=cfg.SAVE_LIMIT,
     )
 
     # Callback
@@ -141,14 +146,14 @@ if __name__ == "__main__":
         callbacks=[testing_callback]  # підключаємо callback
     )
 
-    # 8. Обчислення steps на епоху
+    # 9. Обчислення steps на епоху
     effective_batch_size = PER_DEVICE_BATCH_SIZE * cfg.GRADIENT_ACCUMULATION_STEPS * max(1, num_gpus)
     steps_per_epoch = math.ceil(len(tokenized_dataset) / effective_batch_size)
     logger.info(f"Steps per epoch: {steps_per_epoch}")
 
     resume_ckpt = LAST_CHECKPOINT if LAST_CHECKPOINT else None
 
-    # 9. Навчання по епохах з різним LR та save_steps
+    # 10. Навчання по епохах з різним LR та save_steps
     for epoch_idx in range(EPOCHS):
         lr = cfg.EPOCH_LRS[epoch_idx]
         save_steps = cfg.EPOCH_SAVE_STEPS[epoch_idx]

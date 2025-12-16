@@ -36,21 +36,19 @@ NUM_LAYERS = 10
 HEADS = 14
 
 # --- НАЛАШТУВАННЯ ТРЕНУВАННЯ ---
-EPOCHS = 2                          # кількість епох тренування
-EPOCH_LRS = [4e-4, 2e-4, 1e-4]
+CONTEXT_LENGTH = 512
+EPOCHS = 3                          # кількість епох тренування
+EPOCH_LRS =   [4e-4, 2e-4, 1e-4]
 EPOCH_SAVE_STEPS = [5, 250, 500]    # кількість шагів між збереженням чекпоінтів
+WEIGHT_DECAY = 0.01
+GRADIENT_CLIPPING = 1.0
 TRAIN_OUTPUT_INFO = True        # відображення повідомлень щодо тренування
 TRAIN_OUTPUT_STEPS = 3          # як часто будуть відображатись повідомлення щодо тренування
 
 # --- НАЛАШТУВАННЯ ЗБЕРЕЖЕННЯ ---
-SAVE_STEPS = 5
-SAVE_LIMIT = 3
+SAVE_STEPS = 5                  # кількість кроків між чекпоінтами
+SAVE_LIMIT = 3                  # кількість чекпоінтів
 
-# --- НАЛАШТУВАННЯ ТРЕНУВАННЯ ---
-LEARNING_RATE = 4e-4            # LR для основного етапу
-CONTEXT_LENGTH = 512
-WEIGHT_DECAY = 0.01
-GRADIENT_CLIPPING = 1.0
 
 # --- НАЛАШТУВАННЯ GPU ТА ПРИСКОРЕННЯ ---    
 PER_DEVICE_BATCH_SIZE = 8       # базовий розмір батчу на GPU, зменшити якщо мало VRAM
