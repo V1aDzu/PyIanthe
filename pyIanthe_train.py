@@ -1,4 +1,4 @@
-# pyIanthe_train_final.py
+# pyIanthe_train_final_callbacks.py
 import os
 import sys
 import json
@@ -26,19 +26,15 @@ from modules.pyIanthe_test_callbacks import TestingCallback
 import pyIanthe_config as cfg
 
 if __name__ == "__main__":
-    # 0. Налаштування логів та debug
+    # 0. Логи та debug
     configure_runtime(cfg.DEBUG)
     logger = setup_logging(
         log_to_file=cfg.TRAINING_LOG_ENABLE,
         log_file=os.path.join(cfg.BASE_DIR, cfg.TRAINING_LOG_FILENAME)
     )
 
-    # 0. GPU та runtime
-    device, fp16, bf16, pin_memory, num_gpus, attn_impl = get_device_config(
-        config=cfg,
-        logger=logger
-    )
-    
+    # 0. GPU / device
+    device, fp16, bf16, pin_memory, num_gpus, attn_impl = get_device_config(cfg, logger)
     num_workers = get_num_workers(cfg, logger)
 
     # 1. Папки
@@ -50,13 +46,14 @@ if __name__ == "__main__":
     os.makedirs(REPORTS_DIR, exist_ok=True)
     LAST_CHECKPOINT = get_last_checkpoint(CHECKPOINT_DIR)
 
-    # 2. Конфіг навчання
+    # 2. Навчання
     EPOCHS = 3
     PER_DEVICE_BATCH_SIZE = cfg.PER_DEVICE_BATCH_SIZE
     CONTEXT_LENGTH = cfg.CONTEXT_LENGTH
-    SAVE_STEPS_DEFAULT = cfg.SAVE_STEPS
+    assert len(cfg.EPOCH_LRS) == EPOCHS, "Потрібно задати LR для всіх епох"
+    assert len(cfg.EPOCH_SAVE_STEPS) == EPOCHS, "Потрібно задати save_steps для всіх епох"
 
-    # 3. Завантаження датасету
+    # 3. Датасет
     try:
         dataset, eval_dataset = load_datasets(cfg, logger)
     except Exception as e:
@@ -70,7 +67,6 @@ if __name__ == "__main__":
     logger.info(f"Токенізатор завантажено з: {tokenizer_source_dir}")
 
     dataset = dataset.filter(lambda x: isinstance(x.get("text", ""), str) and x["text"].strip())
-    logger.info(f"Після фільтрації: {len(dataset)} записів")
     tokenized_dataset = dataset.map(
         lambda ex: tokenizer(ex["text"], truncation=True, max_length=CONTEXT_LENGTH),
         batched=True,
@@ -104,18 +100,12 @@ if __name__ == "__main__":
         )
         model = AutoModelForCausalLM.from_config(config, attn_implementation=attn_impl).to(device)
 
-    # Gradient checkpointing
     if cfg.GRADIENT_CHECKPOINTING:
         model.gradient_checkpointing_enable()
         logger.info("✓ Gradient checkpointing увімкнено")
 
     # 6. Тестові приклади
-    GENERATE_EXAMPLES = load_test_examples(
-        logger=logger,
-        base_dir=cfg.BASE_DIR,
-        filename=cfg.TEXT_TEST_FILENAME,
-        max_examples=cfg.TEXT_TESTS_COUNT
-    )
+    GENERATE_EXAMPLES = load_test_examples(logger, cfg.BASE_DIR, cfg.TEXT_TEST_FILENAME, cfg.TEXT_TESTS_COUNT)
 
     # 7. Trainer базовий
     training_args = TrainingArguments(
@@ -130,6 +120,18 @@ if __name__ == "__main__":
         dataloader_pin_memory=pin_memory,
         report_to="none",
         disable_tqdm=False,
+        save_total_limit=3,  # <-- зберігати лише 3 останні чекпоінти
+    )
+
+    # Callback
+    testing_callback = TestingCallback(
+        model=model,
+        tokenizer=tokenizer,
+        device=device,
+        test_prompts=GENERATE_EXAMPLES if cfg.TEST_ENABLED else None,
+        eval_dataset=eval_dataset if cfg.EVAL_ENABLED else None,
+        config=cfg,
+        logger=logger
     )
 
     trainer = Trainer(
@@ -138,32 +140,24 @@ if __name__ == "__main__":
         train_dataset=tokenized_dataset,
         eval_dataset=eval_dataset if cfg.EVAL_ENABLED else None,
         data_collator=data_collator,
+        callbacks=[testing_callback]  # підключаємо callback
     )
 
-    # 8. Обчислення кроків на епоху
+    # 8. Обчислення steps на епоху
     effective_batch_size = PER_DEVICE_BATCH_SIZE * cfg.GRADIENT_ACCUMULATION_STEPS * max(1, num_gpus)
     steps_per_epoch = math.ceil(len(tokenized_dataset) / effective_batch_size)
     logger.info(f"Steps per epoch: {steps_per_epoch}")
 
-    # 9. Резервний чекпоінт
     resume_ckpt = LAST_CHECKPOINT if LAST_CHECKPOINT else None
 
-    # 10. Навчання по епохах з різним LR і reset scheduler
-    # Конфіг приклад: EPOCH_LRS = [4e-4, 2e-4, 1e-4], EPOCH_SAVE_STEPS = [100, 250, 500]
-    assert len(cfg.EPOCH_LRS) == EPOCHS, "Потрібно задати LR для всіх епох"
-    assert len(cfg.EPOCH_SAVE_STEPS) == EPOCHS, "Потрібно задати save_steps для всіх епох"
-
+    # 9. Навчання по епохах з різним LR та save_steps
     for epoch_idx in range(EPOCHS):
         lr = cfg.EPOCH_LRS[epoch_idx]
         save_steps = cfg.EPOCH_SAVE_STEPS[epoch_idx]
         logger.info(f"\n===== Епоха {epoch_idx + 1} / {EPOCHS} | LR={lr} | save_steps={save_steps} =====")
 
-        # AdamW optimizer
-        optimizer = torch.optim.AdamW(
-            model.parameters(),
-            lr=lr,
-            weight_decay=cfg.WEIGHT_DECAY
-        )
+        # AdamW
+        optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=cfg.WEIGHT_DECAY)
 
         # Scheduler reset
         scheduler = get_scheduler(
@@ -173,19 +167,18 @@ if __name__ == "__main__":
             num_training_steps=steps_per_epoch
         )
 
-        # Підміна optimizer і scheduler у Trainer
         trainer.optimizer = optimizer
         trainer.lr_scheduler = scheduler
         trainer.args.save_steps = save_steps
         trainer.args.max_steps = steps_per_epoch * (epoch_idx + 1)
 
-        # Тренування
+        # Навчання
         try:
             trainer.train(resume_from_checkpoint=resume_ckpt)
-            resume_ckpt = None  # resume тільки для першої епохи
+            resume_ckpt = None
         except KeyboardInterrupt:
             logger.warning("⚠ Тренування перервано користувачем (Ctrl+C)")
-            logger.info("Зберігаємо поточний стан...")
+            logger.info("Зберігаємо стан...")
             model.save_pretrained(MAIN_MODEL_DIR)
             tokenizer.save_pretrained(MAIN_MODEL_DIR)
             emergency_checkpoint = os.path.join(CHECKPOINT_DIR, f"checkpoint-interrupted-epoch{epoch_idx+1}")
@@ -207,14 +200,45 @@ if __name__ == "__main__":
             logger.info(f"✓ Аварійний чекпоінт: {emergency_checkpoint}")
             sys.exit(0)
 
-        # Після епохи зберігаємо модель і чекпоінт
+        # Зберігаємо модель після епохи
         model.save_pretrained(MAIN_MODEL_DIR)
         tokenizer.save_pretrained(MAIN_MODEL_DIR)
         checkpoint_epoch_dir = os.path.join(CHECKPOINT_DIR, f"checkpoint-{epoch_idx+1}")
         os.makedirs(checkpoint_epoch_dir, exist_ok=True)
         trainer.save_model(checkpoint_epoch_dir)
         trainer.save_state()
-        generate_epoch_report = lambda idx=epoch_idx: None  # залишаємо заглушку, можна додати тест/репорт
+
+        # Генерація звіту по епосі
+        def generate_epoch_report(epoch_index=epoch_idx):
+            model.eval()
+            report = {}
+            for prompt in GENERATE_EXAMPLES:
+                inputs = tokenizer(prompt, return_tensors="pt").to(device)
+                with torch.no_grad():
+                    outputs = model.generate(
+                        **inputs,
+                        max_new_tokens=cfg.GEN_TEST_MNEW_TOKENS,
+                        temperature=cfg.GEN_TEST_TEMPERATURE,
+                        top_p=cfg.GEN_TEST_TOP_P,
+                        do_sample=True,
+                        pad_token_id=tokenizer.eos_token_id
+                    )
+                    text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+                    logits = model(**inputs).logits
+                    ppl = compute_perplexity(logits, inputs["input_ids"])
+                    avg_len, perc_meaningful = compute_text_metrics(text)
+                    report[prompt] = {
+                        "text": text,
+                        "perplexity": ppl,
+                        "avg_length": avg_len,
+                        "perc_meaningful_tokens": perc_meaningful
+                    }
+            report_file = os.path.join(REPORTS_DIR, f"report_epoch_{epoch_index+1}.json")
+            with open(report_file, "w", encoding="utf-8") as f:
+                json.dump(report, f, ensure_ascii=False, indent=2)
+            model.train()
+            logger.info(f"✓ Звіт по епосі {epoch_index+1} збережено: {report_file}")
+
         generate_epoch_report()
 
     logger.info("\n[SUCCESS] ТРЕНУВАННЯ ЗАВЕРШЕНО!")
